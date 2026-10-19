@@ -30,7 +30,7 @@
   --sidebar:48 30% 94%;--sidebar-foreground:30 8% 16%;--sidebar-border:44 16% 86%;
   --app-font-serif:ui-serif,"New York","Iowan Old Style","Charter",Georgia,serif;
   --radius:1.15rem;
-  --page-header-bg:rgba(247,245,238,.9);
+  --page-header-bg:rgba(247,245,238,.97);
   --shadow:0 1px 2px rgba(70,50,20,.04),0 6px 18px rgba(70,50,20,.05);
   --shadow-md:0 2px 4px rgba(70,50,20,.04),0 10px 28px rgba(70,50,20,.06);
   --shadow-lg:0 4px 8px rgba(70,50,20,.04),0 16px 40px rgba(70,50,20,.07);
@@ -45,7 +45,7 @@
   --primary:150 24% 40%;--primary-foreground:48 40% 99%;--ring:150 26% 50%;
   --sidebar:30 6% 11%;--sidebar-foreground:40 20% 90%;--sidebar-border:30 6% 20%;
   --chart-1:150 26% 52%;--chart-2:210 28% 58%;--chart-3:38 60% 58%;--chart-4:8 50% 62%;--chart-5:280 20% 64%;
-  --page-header-bg:rgba(24,22,20,.9);
+  --page-header-bg:rgba(24,22,20,.97);
 }
 html,body{background-color:hsl(var(--background))}
 body{letter-spacing:0}
@@ -73,6 +73,20 @@ nav.md\:hidden{background:hsl(var(--card)/.94)!important;border:0!important;bord
 nav .group>div.absolute.rounded-full.border-2{display:none!important}
 nav img.rounded-xl{border-radius:10px!important;box-shadow:0 1px 2px rgba(60,45,20,.2),0 4px 12px rgba(60,45,20,.12)!important}
 #favfi-backup-link:hover{background:hsl(var(--muted)/.7)!important;color:hsl(var(--foreground))!important}
+/* budget: expense rows laid out as icon | name+tags | amount + status + menu */
+.bg-card.rounded-3xl.p-5>div.relative.z-20:has(>div.flex.items-center.gap-4):has(>div.shrink-0){display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%}
+.bg-card.rounded-3xl.p-5>div.relative.z-20:has(>div.shrink-0)>div.flex.items-center.gap-4{flex:1;min-width:0}
+.bg-card.rounded-3xl.p-5>div.relative.z-20:has(>div.shrink-0)>div.shrink-0{flex:none}
+.bg-card.rounded-3xl.p-5 div.hidden.sm\:flex.w-10.h-10{display:flex!important}
+button[title^="Tap to cycle"]{min-height:36px;padding:6px 12px!important;font-size:12.5px!important}
+button[title^="Tap to cycle"] span.hidden{display:inline!important}
+@media (max-width:639px){
+ .flex.flex-col.sm\:flex-row.gap-3:has(>select){flex-direction:row;flex-wrap:wrap;gap:10px}
+ .flex.flex-col.sm\:flex-row.gap-3:has(>select)>div{flex:1 1 100%}
+ .flex.flex-col.sm\:flex-row.gap-3:has(>select)>select{flex:1 1 calc(50% - 5px);min-width:0}
+}
+.rounded-full.p-0\.5.w-fit>button>div.absolute{background:hsl(var(--card))!important;box-shadow:0 1px 3px rgba(60,45,20,.15)!important}
+.dark .rounded-full.p-0\.5.w-fit>button>div.absolute{background:hsl(var(--accent))!important}
 </style>
 </head>
 <body>
@@ -1259,7 +1273,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     var show = !linkVisible();
     if (!show) { if (f) f.style.display = "none"; return; }
     if (!f) {
-      f = el("button", "position:fixed;right:16px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:2147482000;width:42px;height:42px;border-radius:50%;border:1px solid rgba(134,168,134,.45);background:" + (dark() ? "rgba(38,35,32,.92)" : "rgba(255,253,249,.94)") + ";color:" + (dark() ? "#a9c9b5" : "#4f6f58") + ";display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 18px rgba(0,0,0,.18);opacity:.8;");
+      f = el("button", "position:fixed;right:16px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:2147482000;width:38px;height:38px;opacity:.82;border-radius:50%;border:1px solid rgba(134,168,134,.45);background:" + (dark() ? "rgba(38,35,32,.92)" : "rgba(255,253,249,.94)") + ";color:" + (dark() ? "#a9c9b5" : "#4f6f58") + ";display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 18px rgba(0,0,0,.18);opacity:.8;");
       f.id = "favfi-backup-fab"; f.setAttribute("aria-label", "Backup & restore");
       f.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>';
       f.onclick = openPanel; document.body.appendChild(f);
