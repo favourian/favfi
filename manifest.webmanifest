@@ -1,0 +1,24 @@
+{
+  "name": "FavFI",
+  "short_name": "FavFI",
+  "description": "Personal finance tracker for expenses, debt payoff and savings goals.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3f1f8",
+  "theme_color": "#7a9370",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
