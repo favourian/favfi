@@ -91,6 +91,14 @@ button[title^="Tap to cycle"] span.hidden{display:inline!important}
 /* cards: defined edges (the original clip-path cut off shadows and the white border vanished on cream) */
 .bg-card.rounded-3xl{clip-path:none!important;border-color:hsl(var(--border))!important;box-shadow:0 1px 2px rgba(70,50,20,.05),0 8px 28px rgba(70,50,20,.07)!important}
 .dark .bg-card.rounded-3xl{box-shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.18)!important}
+
+/* calm cards: no 3D tilt, no cursor-following glow/edge highlights */
+[style*="perspective"]{perspective:none!important}
+[style*="perspective"]>div{transform:none!important;transform-style:flat!important}
+.bg-card.rounded-3xl>div.absolute.pointer-events-none{display:none!important}
+.bg-card.rounded-3xl{transform:none!important}
+div.rounded-3xl.touch-pan-y{box-shadow:none!important;background:transparent!important}
+[style*="perspective"]>div.rounded-3xl:not(.bg-card){box-shadow:none!important;background-color:transparent!important}
 </style>
 </head>
 <body>
@@ -1445,7 +1453,6 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     "@keyframes fvSpark{to{transform:translate(var(--dx),var(--dy)) scale(.2);opacity:0}}" +
     "@keyframes fvFall{to{transform:translateY(105vh) rotate(540deg);opacity:.9}}" +
     "html{-webkit-tap-highlight-color:transparent}" +
-    "@media (hover:hover){.bg-card.rounded-3xl{transition:transform .25s ease,box-shadow .25s ease}.bg-card.rounded-3xl:hover{transform:translateY(-2px)}}" +
     "h1,h2,h3,h4{font-family:var(--app-font-serif)!important;font-weight:500;letter-spacing:-.015em}" +
     "body{font-feature-settings:'ss01','cv11';-webkit-font-smoothing:antialiased}" +
     "button,a{transition:transform .12s ease,opacity .2s ease,background-color .2s ease}" +
@@ -1708,7 +1715,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     });
   }
   css.textContent +=
-    "#fv-glance{margin:0 0 24px}.fv-gl{padding:24px;border-radius:24px;background:hsl(var(--card));border:1px solid hsl(var(--border));box-shadow:0 1px 2px rgba(70,50,20,.05),0 8px 28px rgba(70,50,20,.07);font-family:inherit;animation:fvIn .4s ease both}" +
+    "#fv-glance{margin:0 0 32px}.fv-gl{padding:24px;border-radius:24px;background:hsl(var(--card));border:1px solid hsl(var(--border));box-shadow:0 1px 2px rgba(70,50,20,.05),0 8px 28px rgba(70,50,20,.07);font-family:inherit;animation:fvIn .4s ease both}" +
     ".fv-glh{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}.fv-glh h3{font:500 20px var(--app-font-serif);margin:0}.fv-glh span{font-size:13px;color:hsl(var(--muted-foreground))}" +
     ".fv-gl .fv-stat{margin:0 0 12px}.fv-gl .fv-stat b{font-size:18px}" +
     ".fv-dl{display:flex;flex-direction:column;gap:2px;margin-bottom:14px}.fv-due{display:flex;align-items:center;gap:10px;padding:9px 2px;border-top:1px solid hsl(var(--border)/.6);font-size:14px}.fv-due span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fv-due i{font-style:normal;font-size:12px;color:hsl(var(--muted-foreground))}.fv-due i.od{color:#c0503a;font-weight:600}.fv-due b{font:500 15px var(--app-font-serif)}" +
