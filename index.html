@@ -87,6 +87,10 @@ button[title^="Tap to cycle"] span.hidden{display:inline!important}
 }
 .rounded-full.p-0\.5.w-fit>button>div.absolute{background:hsl(var(--card))!important;box-shadow:0 1px 3px rgba(60,45,20,.15)!important}
 .dark .rounded-full.p-0\.5.w-fit>button>div.absolute{background:hsl(var(--accent))!important}
+
+/* cards: defined edges (the original clip-path cut off shadows and the white border vanished on cream) */
+.bg-card.rounded-3xl{clip-path:none!important;border-color:hsl(var(--border))!important;box-shadow:0 1px 2px rgba(70,50,20,.05),0 8px 28px rgba(70,50,20,.07)!important}
+.dark .bg-card.rounded-3xl{box-shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.18)!important}
 </style>
 </head>
 <body>
@@ -1689,10 +1693,11 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     host.innerHTML = "<div class='fv-gl'><div class='fv-glh'><h3>This month</h3><span>" + today.toLocaleString(undefined, { month: "long" }) + "</span></div>" +
       "<div class='fv-stat'><div>Bills paid<b>" + paid + " of " + ex.length + "</b></div><div>Left to pay<b>" + $(left) + "</b></div><div>Total debt<b>" + $(debt) + "</b></div></div>" +
       (rows ? "<div class='fv-dl'>" + rows + "</div>" : (ex.length ? "<p class='fv-ok'>Nothing due in the next 7 days.</p>" : "")) +
-      (proj ? "<div class='fv-wi'><label>What if I add <b id='fv-x'>$0</b>/month toward debt?</label><input id='fv-r' type='range' min='0' max='500' step='25' value='0'><p id='fv-o'>Drag to see the effect on your debt-free date.</p></div>" : "") + "</div>";
+      (proj ? "<div class='fv-wi'><label>What if I add <b id='fv-x'>$0</b>/month toward debt?</label><input id='fv-r' type='range' min='0' max='500' step='25' value='0'><div class='fv-tk'><span>$0</span><span>$250</span><span>$500</span></div><p id='fv-o'>Drag the slider to see how extra payments change your debt-free date.</p></div>" : "") + "</div>";
     var r = host.querySelector("#fv-r"); if (!r) return;
     r.addEventListener("input", function () {
-      var v = +r.value, p = window.FavFIData.projection(v);
+      var v = +r.value; r.style.setProperty("--p", v / 5 + "%");
+      var p = window.FavFIData.projection(v);
       host.querySelector("#fv-x").textContent = "$" + v;
       var o = host.querySelector("#fv-o");
       if (!p) return;
@@ -1703,12 +1708,12 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     });
   }
   css.textContent +=
-    "#fv-glance{margin:0 0 20px}.fv-gl{padding:20px;border-radius:24px;background:hsl(var(--card));border:1px solid hsl(var(--border));box-shadow:var(--shadow-md);font-family:inherit;animation:fvIn .4s ease both}" +
+    "#fv-glance{margin:0 0 24px}.fv-gl{padding:24px;border-radius:24px;background:hsl(var(--card));border:1px solid hsl(var(--border));box-shadow:0 1px 2px rgba(70,50,20,.05),0 8px 28px rgba(70,50,20,.07);font-family:inherit;animation:fvIn .4s ease both}" +
     ".fv-glh{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}.fv-glh h3{font:500 20px var(--app-font-serif);margin:0}.fv-glh span{font-size:13px;color:hsl(var(--muted-foreground))}" +
     ".fv-gl .fv-stat{margin:0 0 12px}.fv-gl .fv-stat b{font-size:18px}" +
     ".fv-dl{display:flex;flex-direction:column;gap:2px;margin-bottom:14px}.fv-due{display:flex;align-items:center;gap:10px;padding:9px 2px;border-top:1px solid hsl(var(--border)/.6);font-size:14px}.fv-due span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fv-due i{font-style:normal;font-size:12px;color:hsl(var(--muted-foreground))}.fv-due i.od{color:#c0503a;font-weight:600}.fv-due b{font:500 15px var(--app-font-serif)}" +
     ".fv-ok{font-size:14px;color:hsl(var(--muted-foreground));margin:0 0 14px}" +
-    ".fv-wi{padding-top:12px;border-top:1px solid hsl(var(--border)/.6)}.fv-wi label{font-size:14px;display:block;margin-bottom:10px}.fv-wi input{width:100%;accent-color:hsl(var(--primary));height:28px}.fv-wi p{margin:6px 0 0;font-size:14px;line-height:1.45;color:hsl(var(--muted-foreground))}.fv-wi p b{color:hsl(var(--foreground))}";
+    ".fv-wi{padding-top:12px;border-top:1px solid hsl(var(--border)/.6)}.fv-wi label{font-size:14px;display:block;margin-bottom:10px}.fv-wi p{margin:12px 0 0;padding:12px 14px;min-height:46px;box-sizing:border-box;border-radius:14px;background:hsl(var(--primary)/.08);font-size:14px;line-height:1.45;color:hsl(var(--muted-foreground))}.fv-tk{display:flex;justify-content:space-between;font-size:11px;color:hsl(var(--muted-foreground));margin-top:4px;padding:0 2px}.fv-wi p b{color:hsl(var(--foreground))}";
   function trackerHint() {
     var h = [].slice.call(document.querySelectorAll("h2,h3")).filter(function (n) { return /^Set Your Budgets$/.test(n.textContent.trim()); })[0];
     if (!h || document.getElementById("fv-hint")) return;
@@ -1718,6 +1723,12 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     h.insertAdjacentElement("afterend", p);
   }
   setInterval(trackerHint, 1200);
+  css.textContent += "#fv-r{-webkit-appearance:none;appearance:none;width:100%;height:32px;margin:0;background:transparent;--p:0%;touch-action:pan-y}" +
+    "#fv-r::-webkit-slider-runnable-track{height:8px;border-radius:99px;background:linear-gradient(to right,hsl(var(--primary)) var(--p),hsl(var(--muted)) var(--p))}" +
+    "#fv-r::-webkit-slider-thumb{-webkit-appearance:none;width:28px;height:28px;margin-top:-10px;border-radius:50%;background:#fff;border:3px solid hsl(var(--primary));box-shadow:0 2px 8px rgba(40,30,10,.25);transition:transform .15s}" +
+    "#fv-r:active::-webkit-slider-thumb{transform:scale(1.12)}" +
+    "#fv-r::-moz-range-track{height:8px;border-radius:99px;background:hsl(var(--muted))}#fv-r::-moz-range-progress{height:8px;border-radius:99px;background:hsl(var(--primary))}" +
+    "#fv-r::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:#fff;border:3px solid hsl(var(--primary));box-shadow:0 2px 8px rgba(40,30,10,.25)}";
   setInterval(glance, 1200);
   try { window.FavFIData.snapshotNow(); } catch (e) {}
   setInterval(countUp, 600); setTimeout(function () { tour(); checkMilestone(); checkRecap(); }, 1800);
