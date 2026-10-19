@@ -1015,6 +1015,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
   function backupDue() {
     try {
       if (FavFIData.isEmpty()) return false;
+      if (getMeta().backupNudges === false) return false;
       var m = getMeta(), now = new Date();
       if (!m.lastBackup && !m.firstSeen) { setMeta({ firstSeen: now.toISOString() }); return false; }
       if (m.snoozeUntil && new Date(m.snoozeUntil) > now) return false;
@@ -1494,7 +1495,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
 
   /* ---- splash (once per launch) ---- */
   try {
-    if (!sessionStorage.getItem("fv-splash")) {
+    if (!sessionStorage.getItem("fv-splash") && gm().calm !== true) {
       sessionStorage.setItem("fv-splash", "1");
       var sp = el("div", null, "<u></u><b>FavFI</b><i>Your money, calmly.</i>"); sp.id = "fv-splash";
       document.body.appendChild(sp);
@@ -1519,6 +1520,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
 
   /* ---- confetti ---- */
   function confetti() {
+    if (gm().confetti === false || gm().calm === true) return;
     var cols = ["#5b8a6e", "#d9a441", "#c9735b", "#8aa7c4", "#b79ad0"];
     for (var i = 0; i < 40; i++) {
       var c = el("div", "fv-conf"); c.style.left = Math.random() * 100 + "vw"; c.style.background = cols[i % cols.length];
@@ -1563,7 +1565,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
   function onDash() { var h = location.hash.replace(/^#/, ""); return h === "" || h === "/" || h === "/dashboard"; }
   function checkRecap() {
     if (!onDash()) return;
-    var st = stats(); var m = gm(); if (!st || m.recap === st.month) return;
+    var st = stats(); var m = gm(); if (m.recapCard === false || !st || m.recap === st.month) return;
     if (document.querySelector(".fv-sheet")) return;
     sm({ recap: st.month });
     var up = st.paidMonth > 0;
@@ -1632,7 +1634,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
   /* ---- delight: count-up numbers, sparkles when a bill is marked Paid, all-paid celebration ---- */
   var counted = typeof WeakSet !== "undefined" ? new WeakSet() : null;
   function countUp() {
-    if (!counted || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!counted || document.documentElement.classList.contains("fv-calm") || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     document.querySelectorAll(".font-serif").forEach(function (n) {
       if (counted.has(n) || n.children.length > 2) return;
       var tn = null; n.childNodes.forEach(function (c) { if (c.nodeType === 3 && /^[\$−-]?[\d,]+$/.test(c.nodeValue.trim())) tn = c; });
@@ -1696,7 +1698,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     var paid = ex.filter(function (x) { return x.paymentStatus === "paid"; }).length;
     var left = ex.reduce(function (a, x) { return a + (x.paymentStatus === "paid" ? 0 : x.paymentStatus === "half_paid" ? x.amount / 2 : x.amount); }, 0);
     var debt = (d.creditCards || []).reduce(function (a, c) { return a + c.balance; }, 0);
-    var soon = ex.map(function (x) { var i = dueInfo(x, today); return i && i.days <= 7 ? { x: x, i: i } : null; }).filter(Boolean).sort(function (a, b) { return a.i.days - b.i.days; }).slice(0, 4);
+    var soon = gm().dueSoon === false ? [] : ex.map(function (x) { var i = dueInfo(x, today); return i && i.days <= 7 ? { x: x, i: i } : null; }).filter(Boolean).sort(function (a, b) { return a.i.days - b.i.days; }).slice(0, 4);
     var sig = JSON.stringify([streakInfo(d), paid, ex.length, Math.round(left), Math.round(debt), soon.map(function (s) { return s.x.id + ":" + s.i.days; }), today.getDate()]);
     var host = document.getElementById("fv-glance");
     if (host && sig === cardSig) return;
@@ -1710,10 +1712,9 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     var proj = window.FavFIData.projection(0);
     host.innerHTML = "<div class='fv-gl'><div class='fv-glh'><h3>This month" + (streakInfo(d) > 0 ? "<span class='fv-chip'>" + (streakInfo(d) >= 4 ? "🌳" : streakInfo(d) >= 2 ? "🌿" : "🌱") + " " + streakInfo(d) + "-month streak</span>" : "") + "</h3><span>" + today.toLocaleString(undefined, { month: "long" }) + "</span></div>" +
       "<div class='fv-stat'><div>Bills paid<b>" + paid + " of " + ex.length + "</b></div><div>Left to pay<b>" + $(left) + "</b></div><div>Total debt<b>" + $(debt) + "</b></div></div>" +
-      (rows ? "<div class='fv-dl'>" + rows + "</div>" : (ex.length ? "<p class='fv-ok'>Nothing due in the next 7 days.</p>" : "")) +
-      (proj ? "<div class='fv-wi'><label>What if I add <b id='fv-x'>$0</b>/month toward debt?</label><input id='fv-r' type='range' min='0' max='500' step='25' value='0'><div class='fv-tk'><span>$0</span><span>$250</span><span>$500</span></div><p id='fv-o'>Drag the slider to see how extra payments change your debt-free date.</p></div>" : "") + "<div class='fv-ft'><button id='fv-share'>Share progress</button><button id='fv-snd'>Sounds: " + (soundOn() ? "on" : "off") + "</button></div></div>";
+      (rows ? "<div class='fv-dl'>" + rows + "</div>" : (ex.length && gm().dueSoon !== false ? "<p class='fv-ok'>Nothing due in the next 7 days.</p>" : "")) +
+      (proj ? "<div class='fv-wi'><label>What if I add <b id='fv-x'>$0</b>/month toward debt?</label><input id='fv-r' type='range' min='0' max='500' step='25' value='0'><div class='fv-tk'><span>$0</span><span>$250</span><span>$500</span></div><p id='fv-o'>Drag the slider to see how extra payments change your debt-free date.</p></div>" : "") + "<div class='fv-ft'><button id='fv-share'>Share progress</button></div></div>";
     var sh = host.querySelector("#fv-share"); if (sh) sh.onclick = shareImage;
-    var sn = host.querySelector("#fv-snd"); if (sn) sn.onclick = function () { var on = !soundOn(); sm({ sound: on }); sn.textContent = "Sounds: " + (on ? "on" : "off"); if (on) chime("tap"); };
     var r = host.querySelector("#fv-r"); if (!r) return;
     r.addEventListener("input", function () {
       var v = +r.value; r.style.setProperty("--p", v / 5 + "%");
@@ -1768,6 +1769,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
   }
   var hapLabel = null;
   function haptic() {
+    if (gm().haptics === false) return;
     try { if (navigator.vibrate && navigator.vibrate(10)) return; } catch (e) {}
     try { /* iOS 17.4+ Safari: toggling a switch input gives a light tap */
       if (!hapLabel) {
@@ -1813,8 +1815,8 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     if (!host) { host = el("div"); host.id = "fv-nw"; }
     g.insertAdjacentElement("afterend", host); host.setAttribute("data-sig", sig);
     var first = rows[0].value, lastV = rows[rows.length - 1].value, diff = lastV - first;
-    host.innerHTML = "<div class='fv-gl'><div class='fv-glh'><h3>Net worth over time</h3><span>" + (rows.length > 1 ? (diff >= 0 ? "+" : "−") + $(Math.abs(diff)) + " since " + monthLabel(rows[0].month) : "Just getting started") + "</span></div>" + chartHtml(rows) +
-      (rows.length < 2 ? "<p class='fv-ok' style='margin:8px 0 0'>This is your first point. The line grows each month as you keep your numbers up to date.</p>" : "") + "</div>";
+    host.innerHTML = "<div class='fv-gl'><div class='fv-glh'><h3>Net worth over time</h3><span>" + (rows.length > 1 ? (diff >= 0 ? "+" : "−") + $(Math.abs(diff)) + " since " + monthLabel(rows[0].month) : "Just getting started") + "</span></div>" + (rows.length > 1 ? chartHtml(rows) : "<div class='fv-one'><i></i><div><b>" + $(rows[0].value).replace('$-','−$') + "</b><span>" + monthLabel(rows[0].month) + " · your first point</span></div></div>") +
+      (rows.length < 2 ? "<p class='fv-ok' style='margin:12px 0 0'>The line grows each month as you keep your numbers up to date.</p>" : "") + "</div>";
   }
 
   function bigSheet(title, body, kind) {
@@ -1867,6 +1869,68 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
   css.textContent += ".fv-svg{width:100%;height:auto;display:block;margin-top:4px}.fv-svg text{font:11px system-ui;fill:hsl(var(--muted-foreground))}.fv-line{stroke-dasharray:1400;stroke-dashoffset:1400;animation:fvDraw 1.4s ease forwards}@keyframes fvDraw{to{stroke-dashoffset:0}}" +
     ".fv-ft{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid hsl(var(--border)/.6)}.fv-ft button{border:0;background:none;color:hsl(var(--muted-foreground));font:500 13px system-ui;padding:8px 10px;border-radius:10px;min-height:36px}.fv-ft button:hover{background:hsl(var(--muted)/.7);color:hsl(var(--foreground))}" +
     ".fv-chip{display:inline-flex;align-items:center;gap:6px;font:500 12.5px system-ui;padding:4px 10px;border-radius:99px;background:hsl(var(--primary)/.12);color:hsl(var(--primary));margin-left:8px}";
+  /* ---- Preferences: experience settings injected into the Updates > Preferences tab ---- */
+  var PREFS = [
+    ["Feedback", [
+      ["sound", "Sounds", "Soft chimes when you pay a bill or hit a milestone", false],
+      ["haptics", "Haptic taps", "A light tap on key actions (iPad iOS 18+, best effort)", true],
+      ["confetti", "Celebrations", "Confetti when you reach a milestone or pay off a debt", true]]],
+    ["Look & motion", [
+      ["tilt", "Card tilt", "Cards lean toward your finger or cursor", true],
+      ["calm", "Reduce motion", "Turns off animations, counting numbers and splash screen", null]]],
+    ["Dashboard", [
+      ["recapCard", "Monthly recap", "A short summary card once a month", true],
+      ["dueSoon", "Due-soon list", "Show bills due in the next 7 days on the dashboard", true]]],
+    ["Safety", [
+      ["backupNudges", "Backup reminders", "Remind me to save a backup monthly and after many changes", true]]]
+  ];
+  function prefOn(k) {
+    var v = gm()[k], def = null;
+    PREFS.forEach(function (g) { g[1].forEach(function (r) { if (r[0] === k) def = r[3]; }); });
+    if (v === undefined) { if (k === "calm") return !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches); return def; }
+    return !!v;
+  }
+  function applyPrefs() {
+    var h = document.documentElement;
+    h.classList.toggle("fv-notilt", !prefOn("tilt"));
+    h.classList.toggle("fv-calm", prefOn("calm"));
+  }
+  function prefsUi() {
+    var p = [].slice.call(document.querySelectorAll("p")).filter(function (n) { return /Choose what you.d like to hear about/.test(n.textContent); })[0];
+    if (!p) return;
+    var box = p.parentElement; if (box.querySelector("#fv-prefs")) return;
+    var wrap = el("div"); wrap.id = "fv-prefs";
+    PREFS.forEach(function (g) {
+      var sec = el("div", "fv-ps"); sec.appendChild(el("h4", null, g[0]));
+      g[1].forEach(function (r) {
+        var row = el("div", "fv-pr");
+        row.innerHTML = "<div class='fv-pt'><b>" + r[1] + "</b><span>" + r[2] + "</span></div>";
+        var sw = el("button", "fv-sw"); sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-label", r[1]); sw.innerHTML = "<i></i>";
+        function paint() { sw.setAttribute("aria-checked", prefOn(r[0]) ? "true" : "false"); }
+        paint();
+        sw.onclick = function () {
+          var o = {}; o[r[0]] = !prefOn(r[0]); sm(o); paint(); applyPrefs();
+          if (r[0] === "sound" && prefOn("sound")) chime("tap");
+          if (r[0] === "haptics" && prefOn("haptics")) haptic();
+          if (r[0] === "confetti" && prefOn("confetti")) confetti();
+          cardSig = ""; var gl = document.getElementById("fv-glance"); if (gl) gl.remove();
+        };
+        row.appendChild(sw); sec.appendChild(row);
+      });
+      wrap.appendChild(sec);
+    });
+    box.appendChild(wrap);
+  }
+  css.textContent += "[data-radix-popper-content-wrapper] [role=dialog]{background:hsl(var(--popover))!important;backdrop-filter:none!important;max-height:var(--radix-popover-content-available-height,80vh);overflow-y:auto;overscroll-behavior:contain}" +
+    ".fv-one{display:flex;align-items:center;gap:14px;padding:6px 0}.fv-one i{width:14px;height:14px;border-radius:50%;background:hsl(152 30% 36%);box-shadow:0 0 0 6px hsl(152 30% 36%/.16)}.fv-one b{display:block;font:500 24px var(--app-font-serif)}.fv-one span{font-size:13px;color:hsl(var(--muted-foreground))}" +
+    "#fv-prefs{margin-top:6px}.fv-ps{margin-top:14px}.fv-ps h4{font:600 11px system-ui!important;letter-spacing:.08em!important;text-transform:uppercase;color:hsl(var(--muted-foreground));margin:0 0 2px}" +
+    ".fv-pr{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid hsl(var(--border)/.5)}.fv-ps .fv-pr:last-child{border-bottom:0}" +
+    ".fv-pt{min-width:0}.fv-pt b{display:block;font:500 14px system-ui;color:hsl(var(--foreground))}.fv-pt span{display:block;font:400 12px/1.35 system-ui;color:hsl(var(--muted-foreground));margin-top:1px}" +
+    ".fv-sw{position:relative;flex:none;width:42px;height:26px;border-radius:99px;border:0;background:hsl(var(--muted-foreground)/.3);transition:background-color .25s;padding:0}.fv-sw i{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .25s cubic-bezier(.3,1.4,.5,1)}" +
+    ".fv-sw[aria-checked=true]{background:hsl(var(--primary))}.fv-sw[aria-checked=true] i{transform:translateX(16px)}" +
+    "html.fv-notilt [style*='perspective']{perspective:none!important}html.fv-notilt [style*='perspective']>div{transform:none!important;transform-style:flat!important}html.fv-notilt .bg-card.rounded-3xl>div.absolute.pointer-events-none{display:none!important}" +
+    "html.fv-calm *,html.fv-calm *::before,html.fv-calm *::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}";
+  applyPrefs(); setInterval(prefsUi, 400);
   setInterval(function () { try { window.FavFIData.snapshotNow(); } catch (e) {} checkCleared(); nwCard(); }, 2500);
   try { window.FavFIData.snapshotNow(); } catch (e) {}
   setInterval(countUp, 600); setTimeout(function () { tour(); checkMilestone(); checkRecap(); }, 1800);
