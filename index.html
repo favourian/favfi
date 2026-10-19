@@ -928,6 +928,35 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
       return crypto.subtle.deriveBits({ name: "PBKDF2", salt: salt, iterations: 150000, hash: "SHA-256" }, k, 256);
     }).then(function (bits) { return { salt: b64(salt), hash: b64(bits) }; });
   }
+
+  /* Face ID / Touch ID through the browser's passkey (WebAuthn) support. The check happens on the device;
+     there is no server, so this is a screen lock, not encryption. */
+  function bioSupported() { return !!(window.PublicKeyCredential && navigator.credentials && navigator.credentials.create && window.isSecureContext); }
+  function rnd(n) { return crypto.getRandomValues(new Uint8Array(n)); }
+  function toB64(buf) { var s = ""; new Uint8Array(buf).forEach(function (b) { s += String.fromCharCode(b); }); return btoa(s); }
+  function fromB64(s) { return Uint8Array.from(atob(s), function (c) { return c.charCodeAt(0); }); }
+  function bioEnabled() { var m = getMeta(); return !!(m.bio && m.bio.id); }
+  function bioRegister() {
+    return navigator.credentials.create({ publicKey: {
+      challenge: rnd(32), rp: { name: "FavFI", id: location.hostname },
+      user: { id: rnd(16), name: "favfi", displayName: "FavFI" },
+      pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+      authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required", residentKey: "preferred" },
+      timeout: 60000, attestation: "none" } }).then(function (cred) {
+      if (!cred) throw new Error("No credential was created.");
+      setMeta({ bio: { id: toB64(cred.rawId), added: new Date().toISOString() } });
+    });
+  }
+  function bioCheck() {
+    return navigator.credentials.get({ publicKey: {
+      challenge: rnd(32), rpId: location.hostname, userVerification: "required", timeout: 60000,
+      allowCredentials: [{ type: "public-key", id: fromB64(getMeta().bio.id), transports: ["internal", "hybrid"] }] } }).then(function (a) {
+      if (!a) throw new Error("cancelled");
+      var flags = new Uint8Array(a.response.authenticatorData)[32];
+      if (!(flags & 4)) throw new Error("not verified");
+      return true;
+    });
+  }
   function lockEnabled() { var m = getMeta(); return !!(m.lock && m.lock.hash); }
   function verifyPin(pin) { var l = getMeta().lock; return hashPin(pin, l.salt).then(function (h) { return h.hash === l.hash; }); }
   function showLock() {
@@ -962,9 +991,18 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     go.onclick = attempt; inp.onkeydown = function (e) { if (e.key === "Enter") attempt(); };
     forgot.onclick = function () {
       if (!armed) { armed = true; forgot.style.color = "#d64545"; forgot.textContent = "This erases all FavFI data on this device. Tap again to confirm."; return; }
-      FavFIData.reset(); setMeta({ lock: null, lastBackup: null, firstSeen: null, snoozeUntil: null }); location.reload();
+      FavFIData.reset(); setMeta({ lock: null, bio: null, lastBackup: null, firstSeen: null, snoozeUntil: null }); location.reload();
     };
-    box.appendChild(inp); box.appendChild(go); box.appendChild(forgot);
+    var bioBtn = null;
+    if (bioEnabled() && bioSupported()) {
+      bioBtn = el("button", "margin-top:10px;width:100%;font:600 16px/1 " + font + ";padding:14px;border-radius:14px;border:1px solid " + (d ? "rgba(255,255,255,.22)" : "rgba(0,0,0,.15)") + ";background:transparent;color:inherit;cursor:pointer;", "Use Face ID / Touch ID");
+      var tryBio = function () {
+        bioCheck().then(function () { unlockNow(); }, function (e) { if (e && e.message && e.message !== "cancelled" && e.name !== "NotAllowedError") { msg.style.color = "#d64545"; msg.textContent = "Face ID didn't work. Use your PIN."; } });
+      };
+      bioBtn.onclick = tryBio;
+      setTimeout(function () { if (lockEl && !document.hidden) tryBio(); }, 350);
+    }
+    box.appendChild(inp); box.appendChild(go); if (bioBtn) box.appendChild(bioBtn); box.appendChild(forgot);
     lockEl.appendChild(box); document.body.appendChild(lockEl);
     var ov = document.getElementById("favfi-backup-modal"); if (ov) ov.remove();
     setTimeout(function () { try { inp.focus(); } catch (e) {} }, 80);
@@ -1090,7 +1128,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
         ok.onclick = function () {
           m.textContent = "";
           var run = function () {
-            if (kind === "off") { setMeta({ lock: null }); renderLock(); return; }
+            if (kind === "off") { setMeta({ lock: null, bio: null }); renderLock(); return; }
             var a = n1.value, b2 = n2.value;
             if (!/^\d{4,12}$/.test(a)) { m.textContent = "Use 4 to 12 digits."; return; }
             if (a !== b2) { m.textContent = "The two PINs don't match."; return; }
@@ -1108,6 +1146,18 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
         var c2 = el("button", btn, "Turn off"); c2.onclick = function () { form("off"); };
         var c3 = el("button", btn, "Lock now"); c3.onclick = function () { showLock(); };
         rowL.appendChild(c1); rowL.appendChild(c2); rowL.appendChild(c3);
+        if (bioSupported()) {
+          var bb = el("button", btn, bioEnabled() ? "Remove Face ID" : "Add Face ID / Touch ID");
+          bb.onclick = function () {
+            if (bioEnabled()) { setMeta({ bio: null }); renderLock(); return; }
+            msg2.style.color = mut; msg2.textContent = "Follow the Face ID prompt…";
+            bioRegister().then(function () { renderLock(); }, function (e) {
+              msg2.style.color = "#d64545";
+              msg2.textContent = (e && e.name === "NotAllowedError") ? "Cancelled, or Face ID isn't available here." : "Couldn't set up Face ID: " + (e && e.message || "unknown error");
+            });
+          };
+          rowL.appendChild(bb);
+        }
       }
       lockBox.appendChild(rowL); lockBox.appendChild(msg2);
     }
