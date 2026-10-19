@@ -1729,7 +1729,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     });
   }
   css.textContent +=
-    "#fv-glance{margin:0 0 32px}.fv-gl{padding:24px;border-radius:24px;background:hsl(var(--card));border:1px solid hsl(var(--border));box-shadow:0 1px 2px rgba(70,50,20,.05),0 8px 28px rgba(70,50,20,.07);font-family:inherit;animation:fvIn .4s ease both}" +
+    "#fv-glance,#fv-nw{margin:0 0 32px}.fv-gl{padding:24px;border-radius:24px;background:hsl(var(--card));border:1px solid hsl(var(--border));box-shadow:0 1px 2px rgba(70,50,20,.05),0 8px 28px rgba(70,50,20,.07);font-family:inherit;animation:fvIn .4s ease both}" +
     ".fv-glh{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}.fv-glh h3{font:500 20px var(--app-font-serif);margin:0}.fv-glh span{font-size:13px;color:hsl(var(--muted-foreground))}" +
     ".fv-gl .fv-stat{margin:0 0 12px}.fv-gl .fv-stat b{font-size:18px}" +
     ".fv-dl{display:flex;flex-direction:column;gap:2px;margin-bottom:14px}.fv-due{display:flex;align-items:center;gap:10px;padding:9px 2px;border-top:1px solid hsl(var(--border)/.6);font-size:14px}.fv-due span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fv-due i{font-style:normal;font-size:12px;color:hsl(var(--muted-foreground))}.fv-due i.od{color:#c0503a;font-weight:600}.fv-due b{font:500 15px var(--app-font-serif)}" +
@@ -1877,7 +1877,8 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
       ["confetti", "Celebrations", "Confetti when you reach a milestone or pay off a debt", true]]],
     ["Look & motion", [
       ["tilt", "Card tilt", "Cards lean toward your finger or cursor", true],
-      ["calm", "Reduce motion", "Turns off animations, counting numbers and splash screen", null]]],
+      ["calm", "Reduce motion", "Turns off animations, counting numbers and splash screen", null],
+      ["compact", "Compact layout", "Tighter spacing for small screens, like a foldable's cover display", false]]],
     ["Dashboard", [
       ["recapCard", "Monthly recap", "A short summary card once a month", true],
       ["dueSoon", "Due-soon list", "Show bills due in the next 7 days on the dashboard", true]]],
@@ -1894,6 +1895,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     var h = document.documentElement;
     h.classList.toggle("fv-notilt", !prefOn("tilt"));
     h.classList.toggle("fv-calm", prefOn("calm"));
+    h.classList.toggle("fv-compact", prefOn("compact"));
   }
   function prefsUi() {
     var p = [].slice.call(document.querySelectorAll("p")).filter(function (n) { return /Choose what you.d like to hear about/.test(n.textContent); })[0];
@@ -1930,6 +1932,10 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     ".fv-sw[aria-checked=true]{background:hsl(var(--primary))}.fv-sw[aria-checked=true] i{transform:translateX(16px)}" +
     "html.fv-notilt [style*='perspective']{perspective:none!important}html.fv-notilt [style*='perspective']>div{transform:none!important;transform-style:flat!important}html.fv-notilt .bg-card.rounded-3xl>div.absolute.pointer-events-none{display:none!important}" +
     "html.fv-calm *,html.fv-calm *::before,html.fv-calm *::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}";
+  css.textContent += "@media (min-width:600px){nav.md\\:hidden{padding-left:max(24px,env(safe-area-inset-left))!important;padding-right:max(24px,env(safe-area-inset-right))!important}nav.md\\:hidden a>div{min-width:92px!important;padding-top:8px!important;padding-bottom:8px!important}nav.md\\:hidden span{font-size:11.5px!important}}" +
+    "@media (max-height:480px) and (orientation:landscape){nav.md\\:hidden a>div{padding-top:5px!important;padding-bottom:5px!important;min-width:64px!important}nav.md\\:hidden span{display:none!important}main{padding-top:8px!important}.page-title{font-size:26px!important;line-height:1.15!important}.fv-gl{padding:16px}}" +
+    "html.fv-compact .bg-card.rounded-3xl.p-6{padding:16px!important}html.fv-compact .bg-card.rounded-3xl.p-5{padding:14px!important}html.fv-compact .space-y-6>*+*{margin-top:14px!important}html.fv-compact .space-y-8>*+*{margin-top:18px!important}html.fv-compact .page-title{font-size:28px!important}html.fv-compact .fv-gl{padding:16px}html.fv-compact #fv-glance,html.fv-compact #fv-nw{margin-bottom:18px}" +
+    "@media (min-width:600px) and (max-width:1023px){.fv-gl .fv-stat b{font-size:22px}}";
   applyPrefs(); setInterval(prefsUi, 400);
   setInterval(function () { try { window.FavFIData.snapshotNow(); } catch (e) {} checkCleared(); nwCard(); }, 2500);
   try { window.FavFIData.snapshotNow(); } catch (e) {}
