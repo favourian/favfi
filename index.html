@@ -92,13 +92,10 @@ button[title^="Tap to cycle"] span.hidden{display:inline!important}
 .bg-card.rounded-3xl{clip-path:none!important;border-color:hsl(var(--border))!important;box-shadow:0 1px 2px rgba(70,50,20,.05),0 8px 28px rgba(70,50,20,.07)!important}
 .dark .bg-card.rounded-3xl{box-shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.18)!important}
 
-/* calm cards: no 3D tilt, no cursor-following glow/edge highlights */
-[style*="perspective"]{perspective:none!important}
-[style*="perspective"]>div{transform:none!important;transform-style:flat!important}
-.bg-card.rounded-3xl>div.absolute.pointer-events-none{display:none!important}
-.bg-card.rounded-3xl{transform:none!important}
+/* cards keep the 3D tilt + glow; wrapper shadow removed so stacked cards stay visually separate */
 div.rounded-3xl.touch-pan-y{box-shadow:none!important;background:transparent!important}
 [style*="perspective"]>div.rounded-3xl:not(.bg-card){box-shadow:none!important;background-color:transparent!important}
+@media (hover:hover){.bg-card.rounded-3xl{transition:box-shadow .35s ease,border-color .35s ease!important}.bg-card.rounded-3xl:hover{box-shadow:0 2px 4px rgba(70,50,20,.06),0 18px 44px rgba(70,50,20,.14)!important;border-color:hsl(var(--primary)/.28)!important}}
 </style>
 </head>
 <body>
