@@ -110,7 +110,7 @@ div.rounded-3xl.touch-pan-y{box-shadow:none!important;background:transparent!imp
   "use strict";
   var KEY = "favfi:data:v1";
   var TABLES = ["users", "profile", "expenses", "creditCards", "assets", "budget",
-    "notifications", "snapshots", "paymentLogs", "households", "members"];
+    "notifications", "snapshots", "paymentLogs", "households", "members", "nwSnapshots", "paidMonths"];
 
   /* ---------- storage ---------- */
   var mem = null;       // in-memory copy (also the fallback if storage is blocked)
@@ -197,6 +197,20 @@ div.rounded-3xl.touch-pan-y{box-shadow:none!important;background:transparent!imp
         if (s) { s.balance = c.balance; s.cardName = c.name; }
         else insert("snapshots", { userId: uid, cardId: c.id, cardName: c.name, balance: c.balance, snapshotMonth: mo, createdAt: nowIso() });
       });
+    } catch (e) {}
+  }
+  /* net-worth history + months where every bill was paid (kept in the data so backups carry them) */
+  function recordProgress(uid) {
+    try {
+      var d = load(), mo = monthKey();
+      var cards = mine("creditCards", uid), assets = mine("assets", uid), ex = mine("expenses", uid);
+      if (cards.length || assets.length) {
+        var val = r2(sum(assets, function (a) { return a.value; }) - sum(cards, function (c) { return c.balance; }));
+        var row = d.nwSnapshots.filter(function (x) { return x.userId === uid && x.month === mo; })[0];
+        if (row) row.value = val; else insert("nwSnapshots", { userId: uid, month: mo, value: val });
+      }
+      if (ex.length && ex.every(function (e) { return e.paymentStatus === "paid"; }) &&
+        !d.paidMonths.some(function (x) { return x.userId === uid && x.month === mo; })) insert("paidMonths", { userId: uid, month: mo });
     } catch (e) {}
   }
   function trajectoryJob(uid) {
@@ -744,7 +758,7 @@ div.rounded-3xl.touch-pan-y{box-shadow:none!important;background:transparent!imp
         var body = {};
         if (typeof txt === "string" && txt) { try { body = JSON.parse(txt); } catch (e) { body = {}; } }
         var out;
-        try { out = route(method, hit.path.replace(/\/+$/, "") || "/", hit.query, body); save(); if (method !== "GET" && out.status < 300) { try { window.dispatchEvent(new CustomEvent("favfi:changed")); } catch (e2) {} } }
+        try { out = route(method, hit.path.replace(/\/+$/, "") || "/", hit.query, body); if (method !== "GET") recordProgress(1); save(); if (method !== "GET" && out.status < 300) { try { window.dispatchEvent(new CustomEvent("favfi:changed")); } catch (e2) {} } }
         catch (err) { out = { status: 500, body: { error: String(err && err.message || err) } }; }
         var hasBody = out.status !== 204 && out.body !== null;
         return new Response(hasBody ? JSON.stringify(out.body) : null,
@@ -765,7 +779,7 @@ div.rounded-3xl.touch-pan-y{box-shadow:none!important;background:transparent!imp
       mem = fresh; save();
     },
     restore: function (table, item) { var d = load(); if (!d[table].some(function (x) { return x.id === item.id; })) d[table].push(item); save(); },
-    snapshotNow: function () { load(); if (mem.creditCards.length) { syncSnapshots(1); save(); } },
+    snapshotNow: function () { load(); if (mem.creditCards.length) syncSnapshots(1); recordProgress(1); save(); },
     projection: function (extraMonthly) {
       var d = load(), p = profileOf(1), cards = mine("creditCards", 1).filter(function (c) { return c.balance > 0; });
       if (!p || !cards.length) return null;
@@ -1647,7 +1661,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     var x = e.clientX, y = e.clientY;
     if (!/^(Unpaid|½ Paid|Paid)$/.test((b.textContent || "").trim())) return;
     setTimeout(function () {
-      if ((b.textContent || "").trim() === "Paid") { sparkle(x, y); try { navigator.vibrate && navigator.vibrate(10); } catch (z) {} }
+      if ((b.textContent || "").trim() === "Paid") { sparkle(x, y); haptic(); chime("tap"); }
       var m = /(\d+) of (\d+)\s*bills paid/.exec(document.body.innerText || "");
       var mo = new Date().toISOString().slice(0, 7);
       if (m && m[1] === m[2] && +m[1] > 0 && gm().allPaid !== mo) { sm({ allPaid: mo }); confetti(); toast("Every bill paid this month. Beautiful.", null); }
@@ -1683,7 +1697,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     var left = ex.reduce(function (a, x) { return a + (x.paymentStatus === "paid" ? 0 : x.paymentStatus === "half_paid" ? x.amount / 2 : x.amount); }, 0);
     var debt = (d.creditCards || []).reduce(function (a, c) { return a + c.balance; }, 0);
     var soon = ex.map(function (x) { var i = dueInfo(x, today); return i && i.days <= 7 ? { x: x, i: i } : null; }).filter(Boolean).sort(function (a, b) { return a.i.days - b.i.days; }).slice(0, 4);
-    var sig = JSON.stringify([paid, ex.length, Math.round(left), Math.round(debt), soon.map(function (s) { return s.x.id + ":" + s.i.days; }), today.getDate()]);
+    var sig = JSON.stringify([streakInfo(d), paid, ex.length, Math.round(left), Math.round(debt), soon.map(function (s) { return s.x.id + ":" + s.i.days; }), today.getDate()]);
     var host = document.getElementById("fv-glance");
     if (host && sig === cardSig) return;
     var anchor = document.querySelector("main .bg-card.rounded-3xl"); if (!anchor && !host) return;
@@ -1694,10 +1708,12 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
       return "<div class='fv-due'><span>" + s.x.name.replace(/</g, "&lt;") + "</span><i class='" + (s.i.overdue ? "od" : "") + "'>" + lab + "</i><b>" + $(s.x.amount) + "</b></div>";
     }).join("");
     var proj = window.FavFIData.projection(0);
-    host.innerHTML = "<div class='fv-gl'><div class='fv-glh'><h3>This month</h3><span>" + today.toLocaleString(undefined, { month: "long" }) + "</span></div>" +
+    host.innerHTML = "<div class='fv-gl'><div class='fv-glh'><h3>This month" + (streakInfo(d) > 0 ? "<span class='fv-chip'>" + (streakInfo(d) >= 4 ? "🌳" : streakInfo(d) >= 2 ? "🌿" : "🌱") + " " + streakInfo(d) + "-month streak</span>" : "") + "</h3><span>" + today.toLocaleString(undefined, { month: "long" }) + "</span></div>" +
       "<div class='fv-stat'><div>Bills paid<b>" + paid + " of " + ex.length + "</b></div><div>Left to pay<b>" + $(left) + "</b></div><div>Total debt<b>" + $(debt) + "</b></div></div>" +
       (rows ? "<div class='fv-dl'>" + rows + "</div>" : (ex.length ? "<p class='fv-ok'>Nothing due in the next 7 days.</p>" : "")) +
-      (proj ? "<div class='fv-wi'><label>What if I add <b id='fv-x'>$0</b>/month toward debt?</label><input id='fv-r' type='range' min='0' max='500' step='25' value='0'><div class='fv-tk'><span>$0</span><span>$250</span><span>$500</span></div><p id='fv-o'>Drag the slider to see how extra payments change your debt-free date.</p></div>" : "") + "</div>";
+      (proj ? "<div class='fv-wi'><label>What if I add <b id='fv-x'>$0</b>/month toward debt?</label><input id='fv-r' type='range' min='0' max='500' step='25' value='0'><div class='fv-tk'><span>$0</span><span>$250</span><span>$500</span></div><p id='fv-o'>Drag the slider to see how extra payments change your debt-free date.</p></div>" : "") + "<div class='fv-ft'><button id='fv-share'>Share progress</button><button id='fv-snd'>Sounds: " + (soundOn() ? "on" : "off") + "</button></div></div>";
+    var sh = host.querySelector("#fv-share"); if (sh) sh.onclick = shareImage;
+    var sn = host.querySelector("#fv-snd"); if (sn) sn.onclick = function () { var on = !soundOn(); sm({ sound: on }); sn.textContent = "Sounds: " + (on ? "on" : "off"); if (on) chime("tap"); };
     var r = host.querySelector("#fv-r"); if (!r) return;
     r.addEventListener("input", function () {
       var v = +r.value; r.style.setProperty("--p", v / 5 + "%");
@@ -1734,6 +1750,124 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     "#fv-r::-moz-range-track{height:8px;border-radius:99px;background:hsl(var(--muted))}#fv-r::-moz-range-progress{height:8px;border-radius:99px;background:hsl(var(--primary))}" +
     "#fv-r::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:#fff;border:3px solid hsl(var(--primary));box-shadow:0 2px 8px rgba(40,30,10,.25)}";
   setInterval(glance, 1200);
+  /* ---- delight: sounds, haptics, streak, net-worth chart, cleared-card celebration, share image ---- */
+  var actx = null;
+  function soundOn() { return !!gm().sound; }
+  function chime(kind) {
+    if (!soundOn()) return;
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      var notes = kind === "big" ? [523.25, 659.25, 783.99, 1046.5] : kind === "tap" ? [880] : [659.25, 880];
+      notes.forEach(function (f, i) {
+        var o = actx.createOscillator(), g = actx.createGain(), t0 = actx.currentTime + i * 0.09;
+        o.type = "sine"; o.frequency.value = f; o.connect(g); g.connect(actx.destination);
+        g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(kind === "tap" ? 0.05 : 0.09, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + (kind === "big" ? 0.7 : 0.35));
+        o.start(t0); o.stop(t0 + 0.8);
+      });
+    } catch (e) {}
+  }
+  var hapLabel = null;
+  function haptic() {
+    try { if (navigator.vibrate && navigator.vibrate(10)) return; } catch (e) {}
+    try { /* iOS 17.4+ Safari: toggling a switch input gives a light tap */
+      if (!hapLabel) {
+        hapLabel = el("label"); hapLabel.style.cssText = "position:fixed;left:-100px;top:0;opacity:0;pointer-events:none";
+        var i = el("input"); i.type = "checkbox"; i.setAttribute("switch", ""); hapLabel.appendChild(i); document.body.appendChild(hapLabel);
+      }
+      hapLabel.click();
+    } catch (e) {}
+  }
+  function monthLabel(m) { var p = m.split("-"); return new Date(+p[0], +p[1] - 1, 1).toLocaleString(undefined, { month: "short" }); }
+  function streakInfo(d) {
+    var set = {}; (d.paidMonths || []).forEach(function (x) { set[x.month] = 1; });
+    var now = new Date(), cur = now.getFullYear() * 12 + now.getMonth(), n = 0, k = set[keyOf(cur)] ? cur : cur - 1;
+    while (set[keyOf(k)]) { n++; k--; }
+    return n;
+  }
+  function keyOf(i) { var y = Math.floor(i / 12), m = i % 12 + 1; return y + "-" + (m < 10 ? "0" : "") + m; }
+
+  function chartHtml(rows) {
+    var W = 600, H = 170, pl = 8, pr = 8, pt = 18, pb = 26;
+    var vals = rows.map(function (r) { return r.value; }), lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+    if (hi === lo) { hi += 1; lo -= 1; }
+    var pad = (hi - lo) * 0.15; lo -= pad; hi += pad;
+    var pts = rows.map(function (r, i) { return [pl + (rows.length === 1 ? (W - pl - pr) / 2 : i * (W - pl - pr) / (rows.length - 1)), pt + (1 - (r.value - lo) / (hi - lo)) * (H - pt - pb)]; });
+    var path = "M" + pts[0][0] + " " + pts[0][1];
+    for (var i = 1; i < pts.length; i++) { var a = pts[i - 1], b = pts[i], cx = (a[0] + b[0]) / 2; path += " C" + cx + " " + a[1] + " " + cx + " " + b[1] + " " + b[0] + " " + b[1]; }
+    var last = pts[pts.length - 1];
+    var area = rows.length > 1 ? path + " L" + last[0] + " " + (H - pb) + " L" + pts[0][0] + " " + (H - pb) + " Z" : "";
+    var labels = rows.map(function (r, i) { return (rows.length <= 7 || i % Math.ceil(rows.length / 6) === 0 || i === rows.length - 1) ? "<text x='" + pts[i][0] + "' y='" + (H - 6) + "' text-anchor='" + (i === 0 && rows.length > 1 ? "start" : i === rows.length - 1 && rows.length > 1 ? "end" : "middle") + "'>" + monthLabel(r.month) + "</text>" : ""; }).join("");
+    return "<svg viewBox='0 0 " + W + " " + H + "' class='fv-svg' role='img' aria-label='Net worth over time'><defs><linearGradient id='fvg' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='hsl(152 30% 40%)' stop-opacity='.28'/><stop offset='1' stop-color='hsl(152 30% 40%)' stop-opacity='0'/></linearGradient></defs>" +
+      (area ? "<path d='" + area + "' fill='url(#fvg)'/>" : "") + (rows.length > 1 ? "<path class='fv-line' d='" + path + "' fill='none' stroke='hsl(152 30% 36%)' stroke-width='3' stroke-linecap='round'/>" : "") +
+      pts.map(function (p, i) { return "<circle cx='" + p[0] + "' cy='" + p[1] + "' r='" + (i === pts.length - 1 ? 6 : 3.5) + "' fill='" + (i === pts.length - 1 ? "hsl(152 30% 36%)" : "#fff") + "' stroke='hsl(152 30% 36%)' stroke-width='2'/>"; }).join("") + labels + "</svg>";
+  }
+  function nwCard() {
+    var host = document.getElementById("fv-nw");
+    if (!onDash()) { if (host) host.remove(); return; }
+    var g = document.getElementById("fv-glance"); if (!g) return;
+    var d = dataNow(); if (!d) return;
+    var rows = (d.nwSnapshots || []).slice().sort(function (a, b) { return a.month < b.month ? -1 : 1; }).slice(-12);
+    if (!rows.length) { if (host) host.remove(); return; }
+    var sig = JSON.stringify(rows.map(function (r) { return r.month + ":" + Math.round(r.value); }));
+    if (host && host.getAttribute("data-sig") === sig && host.previousElementSibling === g) return;
+    if (!host) { host = el("div"); host.id = "fv-nw"; }
+    g.insertAdjacentElement("afterend", host); host.setAttribute("data-sig", sig);
+    var first = rows[0].value, lastV = rows[rows.length - 1].value, diff = lastV - first;
+    host.innerHTML = "<div class='fv-gl'><div class='fv-glh'><h3>Net worth over time</h3><span>" + (rows.length > 1 ? (diff >= 0 ? "+" : "−") + $(Math.abs(diff)) + " since " + monthLabel(rows[0].month) : "Just getting started") + "</span></div>" + chartHtml(rows) +
+      (rows.length < 2 ? "<p class='fv-ok' style='margin:8px 0 0'>This is your first point. The line grows each month as you keep your numbers up to date.</p>" : "") + "</div>";
+  }
+
+  function bigSheet(title, body, kind) {
+    var s = sheet("<div style='font-size:44px;line-height:1;margin-bottom:10px'>" + (kind === "all" ? "🏆" : "🎉") + "</div><h3>" + title + "</h3><p>" + body + "</p><div class='row'><span></span><button class='fv-btn'>Amazing</button></div>");
+    s.querySelector("button").onclick = function () { s.remove(); };
+    confetti(); setTimeout(confetti, 700); chime("big"); haptic();
+  }
+  function checkCleared() {
+    var d = dataNow(); if (!d || !d.creditCards) return;
+    var m = gm(), bal = m.bal, cleared = m.cleared || [], next = {};
+    d.creditCards.forEach(function (c) { next[c.id] = c.balance; });
+    if (bal) {
+      var hit = d.creditCards.filter(function (c) { return bal[c.id] > 0 && c.balance <= 0 && cleared.indexOf(c.id) < 0; });
+      if (hit.length && !document.querySelector(".fv-sheet")) {
+        var allDone = d.creditCards.every(function (c) { return c.balance <= 0; });
+        var c0 = hit[0];
+        sm({ bal: next, cleared: cleared.concat(hit.map(function (c) { return c.id; })) });
+        if (allDone) bigSheet("You're debt-free!", "Every balance is at zero. This is the finish line you've been working toward — be proud of it.", "all");
+        else bigSheet(c0.name.replace(/</g, "&lt;") + " is paid off!", (c0.minimumPayment > 0 ? "That frees up " + $(c0.minimumPayment) + " a month. " : "") + "Put it toward the next balance and the momentum builds.", "one");
+        return;
+      }
+    }
+    sm({ bal: next });
+  }
+
+  function shareImage() {
+    var d = dataNow(), st = stats(), proj = window.FavFIData.projection(0), streak = d ? streakInfo(d) : 0;
+    var W = 1080, H = 1350, c = document.createElement("canvas"); c.width = W; c.height = H; var x = c.getContext("2d");
+    var g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "#e9efdc"); g.addColorStop(1, "#7fa388"); x.fillStyle = g; x.fillRect(0, 0, W, H);
+    x.fillStyle = "rgba(63,107,82,.35)"; x.beginPath(); x.arc(W / 2, H + 260, 760, 0, 7); x.fill();
+    var img = new Image();
+    function draw() {
+      if (img.complete && img.naturalWidth) { x.save(); x.beginPath(); if (x.roundRect) x.roundRect(80, 90, 120, 120, 30); else x.rect(80, 90, 120, 120); x.clip(); x.drawImage(img, 80, 90, 120, 120); x.restore(); }
+      var serif = "ui-serif, 'New York', Georgia, serif";
+      x.fillStyle = "#2a3a2f"; x.font = "500 52px " + serif; x.fillText("FavFI", 224, 168);
+      var big = st && st.pct >= 1 ? Math.round(st.pct) + "%" : proj ? proj.baseMonths + "" : "✓";
+      var cap = st && st.pct >= 1 ? "of my debt paid off" : proj ? "months to debt-free" : "making progress";
+      x.fillStyle = "#1f2d24"; x.font = "500 330px " + serif; x.textAlign = "center"; x.fillText(big, W / 2, 700);
+      x.font = "400 62px system-ui, sans-serif"; x.fillStyle = "#33453a"; x.fillText(cap, W / 2, 800);
+      if (streak > 0) { x.font = "500 52px system-ui, sans-serif"; x.fillStyle = "#2a3a2f"; x.fillText("🌿 " + streak + (streak === 1 ? " month" : " months") + " of bills paid in full", W / 2, 900); }
+      x.font = "400 40px system-ui, sans-serif"; x.fillStyle = "rgba(255,255,255,.9)"; x.fillText("One payment at a time.", W / 2, H - 110);
+      c.toBlob(function (blob) {
+        var f = new File([blob], "favfi-progress.png", { type: "image/png" });
+        if (navigator.canShare && navigator.canShare({ files: [f] })) navigator.share({ files: [f], title: "My FavFI progress" }).catch(function () {});
+        else { var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "favfi-progress.png"; document.body.appendChild(a); a.click(); a.remove(); }
+      }, "image/png");
+    }
+    img.onload = draw; img.onerror = draw; img.src = ICON;
+  }
+  css.textContent += ".fv-svg{width:100%;height:auto;display:block;margin-top:4px}.fv-svg text{font:11px system-ui;fill:hsl(var(--muted-foreground))}.fv-line{stroke-dasharray:1400;stroke-dashoffset:1400;animation:fvDraw 1.4s ease forwards}@keyframes fvDraw{to{stroke-dashoffset:0}}" +
+    ".fv-ft{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid hsl(var(--border)/.6)}.fv-ft button{border:0;background:none;color:hsl(var(--muted-foreground));font:500 13px system-ui;padding:8px 10px;border-radius:10px;min-height:36px}.fv-ft button:hover{background:hsl(var(--muted)/.7);color:hsl(var(--foreground))}" +
+    ".fv-chip{display:inline-flex;align-items:center;gap:6px;font:500 12.5px system-ui;padding:4px 10px;border-radius:99px;background:hsl(var(--primary)/.12);color:hsl(var(--primary));margin-left:8px}";
+  setInterval(function () { try { window.FavFIData.snapshotNow(); } catch (e) {} checkCleared(); nwCard(); }, 2500);
   try { window.FavFIData.snapshotNow(); } catch (e) {}
   setInterval(countUp, 600); setTimeout(function () { tour(); checkMilestone(); checkRecap(); }, 1800);
 })();
