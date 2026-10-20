@@ -1603,13 +1603,13 @@ var FavFIEngine = (function () {
   var css = el("style");
   css.textContent =
     "main[data-fv-w]>*:not(#fv-wealth){display:none!important}body[data-fv-w] .fv-prev{display:none!important}" +
-    "#fv-wealth{max-width:880px;margin:0 auto;padding:20px 0 40px;animation:fvIn .35s ease both}" +
+    "#fv-wealth{max-width:880px;margin:0 auto;padding:20px 0 40px}" +
     "#fv-wealth h1{font:500 38px/1.1 var(--app-font-serif);letter-spacing:-.02em;margin:6px 0 6px}" +
     "#fv-wealth .sub{color:hsl(var(--muted-foreground));font-size:16px;margin:0 0 18px;line-height:1.45}" +
     ".fw-tabs{display:inline-flex;gap:2px;padding:3px;border-radius:99px;background:hsl(var(--muted));margin:4px 0 20px;max-width:100%;overflow-x:auto}" +
     ".fw-tabs button{border:0;background:none;padding:8px 16px;border-radius:99px;font:500 14px system-ui;color:hsl(var(--muted-foreground));white-space:nowrap;min-height:36px}" +
     ".fw-tabs button[aria-selected=true]{background:hsl(var(--card));color:hsl(var(--foreground));box-shadow:0 1px 3px rgba(60,45,20,.15)}" +
-    ".fw-card{padding:22px;border-radius:24px;background:hsl(var(--card));border:1px solid hsl(var(--border));box-shadow:0 1px 2px rgba(70,50,20,.05),0 8px 28px rgba(70,50,20,.07);margin:0 0 24px;animation:fvIn .4s ease both}" +
+    ".fw-card{padding:22px;border-radius:24px;background:hsl(var(--card));border:1px solid hsl(var(--border));box-shadow:0 1px 2px rgba(70,50,20,.05),0 8px 28px rgba(70,50,20,.07);margin:0 0 24px;}" +
     ".fw-card h2{font:500 21px var(--app-font-serif);margin:0 0 4px;letter-spacing:-.01em}" +
     ".fw-card .hint{font-size:13.5px;color:hsl(var(--muted-foreground));margin:0 0 14px;line-height:1.45}" +
     ".fw-nba{background:linear-gradient(135deg,hsl(var(--primary)/.14),hsl(var(--card)));border-color:hsl(var(--primary)/.25)}" +
@@ -1641,13 +1641,13 @@ var FavFIEngine = (function () {
     "#fv-wealth{position:relative}" +
     ".fw-card{transform-style:preserve-3d;backface-visibility:hidden;-webkit-backface-visibility:hidden;will-change:transform;position:relative;touch-action:pan-y;box-shadow:0 4px 24px rgba(70,50,20,.09),0 2px 6px rgba(70,50,20,.04)}.fw-card::after{content:\"\";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:3;opacity:.55;background:radial-gradient(circle at var(--gx,50%) var(--gy,50%),rgba(255,255,255,.32) 0%,transparent 58%);transition:opacity .4s}.fw-card.tl::after{opacity:1}.fw-card::before{content:\"\";position:absolute;top:0;left:24px;right:24px;height:1px;z-index:3;pointer-events:none;background:linear-gradient(to right,transparent,rgba(255,255,255,.9),transparent)}" +
     "@keyframes fwUp{from{opacity:0;transform:translateY(16px) scale(.985)}to{opacity:1;transform:none}}@keyframes fwGrow{from{transform:scaleX(0)}to{transform:scaleX(1)}}@keyframes fwPop{0%{transform:scale(1)}40%{transform:scale(1.28)}100%{transform:scale(1)}}"+
-    "#fv-wealth>.fw-card,#fv-wealth>.fw-tabs{animation:fwUp .55s cubic-bezier(.2,.8,.2,1) backwards;animation-delay:calc(var(--i,0)*70ms)}#fv-wealth.fw-still>*{animation:none!important}"+
+    "#fv-wealth .fw-card,#fv-wealth>.fw-tabs{animation:fwUp .55s cubic-bezier(.2,.8,.2,1) backwards;animation-delay:calc(var(--i,0)*70ms)}#fv-wealth.fw-still>*,#fv-wealth.fw-still .fw-card{animation:none!important}"+
     ".fw-bar i,.fw-prog i{transform-origin:left center;animation:fwGrow .9s cubic-bezier(.2,.8,.2,1) both;animation-delay:.25s}#fv-wealth.fw-still .fw-bar i,#fv-wealth.fw-still .fw-prog i{animation:none}.fw-box.pop{animation:fwPop .4s ease}.fw-btn:active,.fw-tabs button:active{transform:scale(.96)}.fw-btn,.fw-tabs button{transition:transform .15s,background-color .2s}.fw-range:active::-webkit-slider-thumb{transform:scale(1.15)}.fw-range::-webkit-slider-thumb{transition:transform .15s}" +
     ".fw-ft{font-size:12px;line-height:1.5;color:hsl(var(--muted-foreground))}.fw-ft a{color:hsl(var(--primary))}" +
     ".fw-acts{display:flex;flex-wrap:wrap;gap:10px}.fw-btn{border:0;border-radius:14px;padding:12px 18px;min-height:46px;font:600 15px system-ui;background:hsl(var(--primary));color:hsl(var(--primary-foreground))}.fw-btn.g{background:hsl(var(--muted));color:hsl(var(--foreground))}" +
     ".fw-slide{width:100%}.fw-pill{display:inline-block;padding:3px 10px;border-radius:99px;background:hsl(var(--muted));font:500 12.5px system-ui;color:hsl(var(--muted-foreground))}" +
     ".fv-nav-active{background:rgba(134,168,134,.16)!important;border:1px solid rgba(134,168,134,.3)!important;color:hsl(var(--primary))!important}.fv-nav-active *{color:hsl(var(--primary))!important}" +
-    "@media (max-width:599px){nav.md\\:hidden a>div{min-width:0!important;padding-left:7px!important;padding-right:7px!important}#fv-wealth h1{font-size:32px}.fw-big b{font-size:38px}}";
+    "@media (max-width:599px){nav.md\\:hidden a>div{min-width:0!important;padding-left:7px!important;padding-right:7px!important}#fv-wealth h1{font-size:32px}.fw-big{gap:10px 16px}.fw-big>div{flex:1 1 42%;min-width:0}.fw-big b{font-size:30px}.fw-big span{font-size:12px}}";
   document.head.appendChild(css);
 
   /* ---------- navigation item (sidebar, rail, bottom bar) ---------- */
@@ -1958,7 +1958,7 @@ var FavFIEngine = (function () {
       "<div class='fw-tabs' role='tablist'>" + tabs.map(function (t) { return "<button role='tab' aria-selected='" + (tab === t[0]) + "' data-tab='" + t[0] + "'>" + t[1] + "</button>"; }).join("") + "</div>" + body + takeItFurther() +
       "<p class='fw-ft' style='padding:0 6px'>FavFI gives educational estimates, not tax, legal or investment advice. Rules change and your situation is unique; confirm important decisions with a qualified CPA or attorney.</p>";
     wireSlider(); salaryNote(); host.classList.toggle("fw-still", !!still);
-    [].forEach.call(host.children, function (c, i) { c.style.setProperty("--i", Math.min(i, 8)); }); if (!still) countBig(host);
+    [].forEach.call(host.querySelectorAll(".fw-card,.fw-tabs"), function (c, i) { c.style.setProperty("--i", Math.min(i, 9)); }); if (!still) countBig(host);
   }
   function countBig(root) {
     if (document.documentElement.classList.contains("fv-calm") || (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches)) return;
@@ -1971,7 +1971,7 @@ var FavFIEngine = (function () {
     var n = host && host.querySelector("#fw-salnote"); if (!n) return; var d = data(), prof = d && d.profile && d.profile[0];
     if (prof && num(W.salary) && Math.abs(prof.annualSalary - num(W.salary)) > 1) { n.innerHTML = "<p class='hint' style='margin:12px 0 0'>Your FavFI setup still shows " + fmt(prof.annualSalary) + ". <button type='button' class='fw-btn g' style='min-height:36px;padding:6px 12px;font-size:13px' data-a='sal'>Update my salary everywhere</button></p>"; } else n.innerHTML = "";
   }
-  function refreshResults() { var r = host && host.querySelector("#fw-res"); if (r) { r.innerHTML = taxResults(); wireSlider(); } var nb = host && host.querySelector(".fw-nba"); if (nb) { var n = nextAction(); nb.innerHTML = "<small>" + n[0] + "</small><p>" + n[1] + "</p>"; } salaryNote(); }
+  function refreshResults() { if (host) host.classList.add("fw-still"); var r = host && host.querySelector("#fw-res"); if (r) { r.innerHTML = taxResults(); wireSlider(); } var nb = host && host.querySelector(".fw-nba"); if (nb) { var n = nextAction(); nb.innerHTML = "<small>" + n[0] + "</small><p>" + n[1] + "</p>"; } salaryNote(); }
   function wireSlider() {
     var sl = host && host.querySelector("#fw-sl"); if (!sl) return;
     function upd() {
@@ -2035,7 +2035,7 @@ var FavFIEngine = (function () {
     saveW(); if (tab === "tax") refreshResults(); else if (tab === "give") renderGiveOnly(); else if (tab === "protect") { var lc = host.querySelector("#fw-life"); if (lc) { var tmp = el("div", null, lifeHtml()); lc.querySelector("#fw-lifeout").innerHTML = tmp.querySelector("#fw-lifeout").innerHTML; } }
   });
   function renderGiveOnly() {
-    var r = host.querySelector("#fw-gres"); if (!r) return;
+    var r = host.querySelector("#fw-gres"); if (!r) return; host.classList.add("fw-still");
     var tmp = el("div", null, giveHtml()); r.innerHTML = tmp.querySelector("#fw-gres").innerHTML;
     var nb = host.querySelector(".fw-nba"); if (nb) { var n = nextAction(); nb.innerHTML = "<small>" + n[0] + "</small><p>" + n[1] + "</p>"; }
   }
