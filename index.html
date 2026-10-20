@@ -110,7 +110,7 @@ div.rounded-3xl.touch-pan-y{box-shadow:none!important;background:transparent!imp
   "use strict";
   var KEY = "favfi:data:v1";
   var TABLES = ["users", "profile", "expenses", "creditCards", "assets", "budget",
-    "notifications", "snapshots", "paymentLogs", "households", "members", "nwSnapshots", "paidMonths"];
+    "notifications", "snapshots", "paymentLogs", "households", "members", "nwSnapshots", "paidMonths", "wealth"];
 
   /* ---------- storage ---------- */
   var mem = null;       // in-memory copy (also the fallback if storage is blocked)
@@ -779,6 +779,8 @@ div.rounded-3xl.touch-pan-y{box-shadow:none!important;background:transparent!imp
       mem = fresh; save();
     },
     restore: function (table, item) { var d = load(); if (!d[table].some(function (x) { return x.id === item.id; })) d[table].push(item); save(); },
+    getWealth: function () { var d = load(); var r = d.wealth.filter(function (x) { return x.userId === 1; })[0]; return r ? JSON.parse(JSON.stringify(r.data || {})) : {}; },
+    setWealth: function (obj) { var d = load(); var r = d.wealth.filter(function (x) { return x.userId === 1; })[0]; if (r) r.data = obj; else insert("wealth", { userId: 1, data: obj }); save(); try { window.dispatchEvent(new CustomEvent("favfi:changed")); } catch (e) {} },
     snapshotNow: function () { load(); if (mem.creditCards.length) syncSnapshots(1); recordProgress(1); save(); },
     projection: function (extraMonthly) {
       var d = load(), p = profileOf(1), cards = mine("creditCards", 1).filter(function (c) { return c.balance > 0; });
@@ -1447,6 +1449,466 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
   new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });
   addEventListener("resize", schedule);
   inject(); schedule();
+})();
+
+/* FavFI Wealth: 2026 tax engine (pure functions; also unit-tested in node). Educational estimates only. */
+var FavFIEngine = (function () {
+  "use strict";
+  var YEAR = 2026;
+  var BR = {
+    single: [[12400, 0.10], [50400, 0.12], [105700, 0.22], [201775, 0.24], [256225, 0.32], [640600, 0.35], [Infinity, 0.37]],
+    mfj: [[24800, 0.10], [100800, 0.12], [211400, 0.22], [403550, 0.24], [512450, 0.32], [768700, 0.35], [Infinity, 0.37]]
+  };
+  var STD = { single: 16100, mfj: 32200 };
+  var LIM = { k401: 24500, k401Catch: 8000, hsaSelf: 4400, hsaFamily: 8750, hsaCatch: 1000, ira: 7500, iraCatch: 1100,
+    ssBase: 184500, addlMedicare: { single: 200000, mfj: 250000 }, rothIra: { single: [153000, 168000], mfj: [242000, 252000] } };
+
+  function bracketTax(taxable, fs) {
+    var t = 0, prev = 0, br = BR[fs] || BR.single, i;
+    for (i = 0; i < br.length; i++) {
+      var top = br[i][0];
+      if (taxable > prev) t += (Math.min(taxable, top) - prev) * br[i][1];
+      prev = top;
+      if (taxable <= top) break;
+    }
+    return t;
+  }
+  function marginal(taxable, fs) {
+    var br = BR[fs] || BR.single, i;
+    for (i = 0; i < br.length; i++) if (taxable <= br[i][0]) return br[i][1];
+    return 0.37;
+  }
+  function roomInBracket(taxable, fs) {
+    var br = BR[fs] || BR.single, i;
+    for (i = 0; i < br.length; i++) if (taxable <= br[i][0]) return br[i][0] === Infinity ? Infinity : br[i][0] - taxable;
+    return Infinity;
+  }
+
+  /* p: {fs, salary, bonus, k401Pre, k401Roth, hsa, stateRate(0-100), extraItemized, age50} */
+  function estimate(p) {
+    var fs = p.fs === "mfj" ? "mfj" : "single";
+    var gross = Math.max(0, (+p.salary || 0) + (+p.bonus || 0));
+    var k401 = Math.max(0, Math.min(+p.k401Pre || 0, gross));
+    var hsa = Math.max(0, +p.hsa || 0);
+    var ficaWages = Math.max(0, gross - hsa);                // HSA through payroll also skips FICA; 401(k) does not
+    var agi = Math.max(0, gross - k401 - hsa);
+    var itemized = Math.max(0, +p.extraItemized || 0);
+    var ded = Math.max(STD[fs], itemized);
+    var taxable = Math.max(0, agi - ded);
+    var fed = bracketTax(taxable, fs);
+    var ss = Math.min(ficaWages, LIM.ssBase) * 0.062;
+    var med = ficaWages * 0.0145 + Math.max(0, ficaWages - LIM.addlMedicare[fs]) * 0.009;
+    var fica = ss + med;
+    var state = Math.max(0, agi * ((+p.stateRate || 0) / 100));
+    var total = fed + fica + state;
+    var saved = k401 + hsa + (+p.k401Roth || 0);
+    var takeHome = gross - total - k401 - hsa - (+p.k401Roth || 0);
+    return { fs: fs, gross: gross, agi: agi, deduction: ded, taxable: taxable, fed: fed, fica: fica, state: state, total: total,
+      takeHome: takeHome, saved: saved, marginal: marginal(taxable, fs), effective: gross ? total / gross : 0, room: roomInBracket(taxable, fs) };
+  }
+
+  function levers(p) {
+    var base = estimate(p), out = [];
+    var k401Max = LIM.k401 + (p.age50 ? LIM.k401Catch : 0);
+    var cur = Math.max(0, +p.k401Pre || 0);
+    if (cur < k401Max) {
+      var q = Object.assign({}, p, { k401Pre: k401Max }), e = estimate(q), add = k401Max - cur;
+      out.push({ id: "k401", title: "Max out pre-tax 401(k)", add: add, saves: base.total - e.total, cost: add - (base.total - e.total),
+        why: "Pre-tax 401(k) contributions come out before income tax, so they shrink the income you're taxed on. Your take-home drops by less than the amount you contribute, because part of it is tax you would have paid anyway. 401(k) contributions do not reduce Social Security and Medicare tax.",
+        note: "2026 limit " + fmt(k401Max) + (p.age50 ? " (includes age 50+ catch-up)." : ".") });
+    }
+    if (p.hsaEligible) {
+      var hmax = (p.hsaFamily ? LIM.hsaFamily : LIM.hsaSelf) + (p.age55 ? LIM.hsaCatch : 0), hc = Math.max(0, +p.hsa || 0);
+      if (hc < hmax) {
+        var q2 = Object.assign({}, p, { hsa: hmax }), e2 = estimate(q2);
+        out.push({ id: "hsa", title: "Fill your HSA", add: hmax - hc, saves: base.total - e2.total, cost: (hmax - hc) - (base.total - e2.total),
+          why: "An HSA is triple tax-advantaged: money goes in before tax, grows tax-free, and comes out tax-free for medical costs. Payroll contributions also skip Social Security and Medicare tax. You need a qualifying high-deductible health plan. Some states (like California and New Jersey) don't give the state-tax break.",
+          note: "2026 limit " + fmt(hmax) + (p.hsaFamily ? " (family coverage)." : " (self-only coverage).") });
+      }
+    }
+    if (+p.matchPct > 0) {
+      var target = (p.salary || 0) * (p.matchPct / 100), gap = Math.max(0, target - cur - (+p.k401Roth || 0));
+      if (gap > 0) out.push({ id: "match", title: "Capture your full employer match", add: gap, saves: gap, cost: 0, match: true,
+        why: "An employer match is an immediate return on your contribution that no investment reliably beats. Assuming your employer matches dollar-for-dollar up to " + p.matchPct + "% of pay, contributing " + fmt(target) + " a year gets the full match. Check your plan's exact formula.",
+        note: "Counted here as free money, separate from the tax savings." });
+    }
+    out.sort(function (a, b) { return (b.saves) - (a.saves); });
+    return { base: base, list: out };
+  }
+
+  /* charitable: compare itemizing vs standard (with 2026 non-itemizer deduction), 0.5% AGI floor for itemizers */
+  function giving(p, gift) {
+    var fs = p.fs === "mfj" ? "mfj" : "single", base = estimate(p), agi = base.agi;
+    var nonItem = Math.min(gift, fs === "mfj" ? 2000 : 1000);
+    var tStd = bracketTax(Math.max(0, agi - STD[fs] - nonItem), fs);
+    var floor = 0.005 * agi, itemDed = (+p.extraItemized || 0) + Math.max(0, gift - floor);
+    var tItem = bracketTax(Math.max(0, agi - Math.max(itemDed, 0)), fs);
+    var tNone = bracketTax(Math.max(0, agi - Math.max(STD[fs], +p.extraItemized || 0)), fs);
+    var best = Math.min(tStd, itemDed > STD[fs] ? tItem : tStd);
+    return { tNone: tNone, tStd: tStd, tItem: tItem, itemDed: itemDed, saves: tNone - best, itemizes: itemDed > STD[fs] + nonItem && tItem < tStd, floor: floor };
+  }
+  /* bunching: give 2x every other year vs x each year (two-year total tax) */
+  function bunching(p, gift) {
+    var fs = p.fs === "mfj" ? "mfj" : "single", agi = estimate(p).agi, other = +p.extraItemized || 0;
+    function yearTax(g) {
+      var nonItem = Math.min(g, fs === "mfj" ? 2000 : 1000);
+      var std = bracketTax(Math.max(0, agi - STD[fs] - nonItem), fs);
+      var item = bracketTax(Math.max(0, agi - (other + Math.max(0, g - 0.005 * agi))), fs);
+      return Math.min(std, item);
+    }
+    var steady = yearTax(gift) * 2, bunch = yearTax(gift * 2) + yearTax(0);
+    return { steady: steady, bunch: bunch, saves: steady - bunch };
+  }
+
+  function fmt(n) { return (n < 0 ? "-$" : "$") + Math.round(Math.abs(n)).toLocaleString("en-US"); }
+  return { YEAR: YEAR, LIM: LIM, STD: STD, estimate: estimate, levers: levers, giving: giving, bunching: bunching, bracketTax: bracketTax, fmt: fmt };
+})();
+
+
+/* FavFI Wealth tab: Tax Lab, Protect, Give, Calendar. Everything runs on this device. */
+(function () {
+  "use strict";
+  var E = FavFIEngine, fmt = E.fmt;
+  var META = "favfi:meta:v1";
+  function gm() { try { return JSON.parse(localStorage.getItem(META) || "{}") || {}; } catch (e) { return {}; } }
+  function sm(p) { var m = gm(); for (var k in p) m[k] = p[k]; try { localStorage.setItem(META, JSON.stringify(m)); } catch (e) {} }
+  function el(tag, cls, html) { var n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function num(v) { var n = parseFloat(String(v).replace(/[^0-9.\-]/g, "")); return isFinite(n) ? n : 0; }
+  function data() { try { return JSON.parse(window.FavFIData.exportJson()).data; } catch (e) { return null; } }
+
+  /* ---------- stored wealth profile (lives in the data, so backups carry it) ---------- */
+  var W = null, saveT = null;
+  function loadW() {
+    var w = {}; try { w = window.FavFIData.getWealth() || {}; } catch (e) {}
+    var d = data(), prof = d && d.profile && d.profile[0];
+    W = Object.assign({ fs: "single", salary: prof ? prof.annualSalary : 0, bonus: 0, k401Pre: 0, k401Roth: 0, hsaEligible: false, hsaFamily: false, hsa: 0,
+      matchPct: 0, stateRate: 0, extraItemized: 0, age50: false, age55: false, gift: 0, checks: {} }, w);
+    W.checks = W.checks || {};
+  }
+  function saveW() { clearTimeout(saveT); saveT = setTimeout(function () { try { window.FavFIData.setWealth(W); } catch (e) {} }, 400); }
+
+  /* ---------- CSS ---------- */
+  var css = el("style");
+  css.textContent =
+    "main[data-fv-w]>*:not(#fv-wealth){display:none!important}body[data-fv-w] header.space-y-1{display:none!important}" +
+    "#fv-wealth{max-width:880px;margin:0 auto;padding:20px 0 40px;animation:fvIn .35s ease both}" +
+    "#fv-wealth h1{font:500 38px/1.1 var(--app-font-serif);letter-spacing:-.02em;margin:6px 0 6px}" +
+    "#fv-wealth .sub{color:hsl(var(--muted-foreground));font-size:16px;margin:0 0 18px;line-height:1.45}" +
+    ".fw-tabs{display:inline-flex;gap:2px;padding:3px;border-radius:99px;background:hsl(var(--muted));margin:4px 0 20px;max-width:100%;overflow-x:auto}" +
+    ".fw-tabs button{border:0;background:none;padding:8px 16px;border-radius:99px;font:500 14px system-ui;color:hsl(var(--muted-foreground));white-space:nowrap;min-height:36px}" +
+    ".fw-tabs button[aria-selected=true]{background:hsl(var(--card));color:hsl(var(--foreground));box-shadow:0 1px 3px rgba(60,45,20,.15)}" +
+    ".fw-card{padding:22px;border-radius:24px;background:hsl(var(--card));border:1px solid hsl(var(--border));box-shadow:0 1px 2px rgba(70,50,20,.05),0 8px 28px rgba(70,50,20,.07);margin:0 0 24px;animation:fvIn .4s ease both}" +
+    ".fw-card h2{font:500 21px var(--app-font-serif);margin:0 0 4px;letter-spacing:-.01em}" +
+    ".fw-card .hint{font-size:13.5px;color:hsl(var(--muted-foreground));margin:0 0 14px;line-height:1.45}" +
+    ".fw-nba{background:linear-gradient(135deg,hsl(var(--primary)/.14),hsl(var(--card)));border-color:hsl(var(--primary)/.25)}" +
+    ".fw-nba small{font:600 11px system-ui;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--primary))}" +
+    ".fw-nba p{margin:6px 0 0;font-size:16px;line-height:1.5}" +
+    ".fw-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}" +
+    ".fw-f label{display:block;font:500 12.5px system-ui;color:hsl(var(--muted-foreground));margin:0 0 6px}" +
+    ".fw-f .in{display:flex;align-items:center;gap:6px;padding:0 12px;min-height:46px;border-radius:14px;background:hsl(var(--muted)/.5);border:1px solid transparent}" +
+    ".fw-f .in:focus-within{border-color:hsl(var(--primary)/.5);background:hsl(var(--card))}" +
+    ".fw-f input,.fw-f select{flex:1;min-width:0;border:0;background:transparent;font:500 16px system-ui;color:hsl(var(--foreground));outline:0;min-height:44px}" +
+    ".fw-f .in span{color:hsl(var(--muted-foreground));font-size:15px}" +
+    ".fw-tog{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid hsl(var(--border)/.6)}.fw-tog b{font:500 14.5px system-ui}.fw-tog span{display:block;font:400 12.5px/1.35 system-ui;color:hsl(var(--muted-foreground))}" +
+    ".fw-big{display:flex;flex-wrap:wrap;gap:14px 28px;align-items:flex-end;margin:4px 0 16px}.fw-big b{display:block;font:500 44px/1 var(--app-font-serif);letter-spacing:-.02em}.fw-big span{font-size:13px;color:hsl(var(--muted-foreground))}" +
+    ".fw-bar{display:flex;height:16px;border-radius:99px;overflow:hidden;background:hsl(var(--muted));margin:6px 0 10px}.fw-bar i{display:block;height:100%;transition:width .5s ease}" +
+    ".fw-leg{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:hsl(var(--muted-foreground))}.fw-leg i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}" +
+    ".fw-lev{border-top:1px solid hsl(var(--border)/.6);padding:14px 0}.fw-lev:first-of-type{border-top:0}.fw-lh{display:flex;justify-content:space-between;gap:12px;align-items:baseline}.fw-lh b{font:500 16px system-ui}.fw-lh em{font:500 20px var(--app-font-serif);font-style:normal;color:hsl(var(--primary));white-space:nowrap}" +
+    ".fw-lev p{margin:4px 0 0;font-size:13.5px;color:hsl(var(--muted-foreground));line-height:1.45}" +
+    ".fw-lev details{margin-top:8px}.fw-lev summary{font:500 13px system-ui;color:hsl(var(--primary));cursor:pointer;list-style:none;min-height:32px;display:flex;align-items:center}.fw-lev summary::-webkit-details-marker{display:none}" +
+    ".fw-lev details p{padding:10px 12px;border-radius:12px;background:hsl(var(--muted)/.5);margin-top:6px}" +
+    ".fw-chk{display:flex;gap:12px;align-items:flex-start;padding:13px 0;border-top:1px solid hsl(var(--border)/.6)}.fw-chk:first-of-type{border-top:0}" +
+    ".fw-box{flex:none;width:26px;height:26px;border-radius:9px;border:2px solid hsl(var(--border));background:transparent;display:flex;align-items:center;justify-content:center;padding:0;color:#fff;transition:all .2s}.fw-box[aria-checked=true]{background:hsl(var(--primary));border-color:hsl(var(--primary))}.fw-box svg{opacity:0;transition:opacity .2s}.fw-box[aria-checked=true] svg{opacity:1}" +
+    ".fw-chk b{display:block;font:500 15px system-ui}.fw-chk span{display:block;font:400 13px/1.45 system-ui;color:hsl(var(--muted-foreground));margin-top:2px}.fw-chk[data-done=true] b{color:hsl(var(--muted-foreground));text-decoration:line-through}" +
+    ".fw-prog{height:10px;border-radius:99px;background:hsl(var(--muted));overflow:hidden;margin:8px 0 4px}.fw-prog i{display:block;height:100%;background:hsl(var(--primary));border-radius:99px;transition:width .5s ease}" +
+    ".fw-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}.fw-col{padding:16px;border-radius:18px;background:hsl(var(--muted)/.45);border:1px solid transparent}.fw-col.rec{border-color:hsl(var(--primary)/.45);background:hsl(var(--primary)/.08)}" +
+    ".fw-col h3{font:500 17px var(--app-font-serif);margin:0 0 8px}.fw-col ul{margin:0;padding:0;list-style:none;font-size:13px;line-height:1.5;color:hsl(var(--muted-foreground))}.fw-col li{padding:4px 0}.fw-col li b{color:hsl(var(--foreground));font-weight:500}.fw-tag{display:inline-block;font:600 10.5px system-ui;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:99px;background:hsl(var(--primary));color:hsl(var(--primary-foreground));margin-bottom:8px}" +
+    ".fw-cal{display:flex;gap:14px;align-items:flex-start;padding:13px 0;border-top:1px solid hsl(var(--border)/.6)}.fw-cal:first-of-type{border-top:0}.fw-date{flex:none;width:58px;text-align:center;padding:6px 0;border-radius:12px;background:hsl(var(--muted)/.6)}.fw-date b{display:block;font:500 20px var(--app-font-serif);line-height:1}.fw-date span{font:600 10px system-ui;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--muted-foreground))}" +
+    ".fw-ft{font-size:12px;line-height:1.5;color:hsl(var(--muted-foreground))}.fw-ft a{color:hsl(var(--primary))}" +
+    ".fw-acts{display:flex;flex-wrap:wrap;gap:10px}.fw-btn{border:0;border-radius:14px;padding:12px 18px;min-height:46px;font:600 15px system-ui;background:hsl(var(--primary));color:hsl(var(--primary-foreground))}.fw-btn.g{background:hsl(var(--muted));color:hsl(var(--foreground))}" +
+    ".fw-slide{width:100%}.fw-pill{display:inline-block;padding:3px 10px;border-radius:99px;background:hsl(var(--muted));font:500 12.5px system-ui;color:hsl(var(--muted-foreground))}" +
+    ".fv-nav-active{background:rgba(134,168,134,.16)!important;border:1px solid rgba(134,168,134,.3)!important;color:hsl(var(--primary))!important}.fv-nav-active *{color:hsl(var(--primary))!important}" +
+    "@media (max-width:599px){nav.md\\:hidden a>div{min-width:0!important;padding-left:7px!important;padding-right:7px!important}#fv-wealth h1{font-size:32px}.fw-big b{font-size:38px}}";
+  document.head.appendChild(css);
+
+  /* ---------- navigation item (sidebar, rail, bottom bar) ---------- */
+  var ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>';
+  function onWealth() { return location.hash === "#/wealth"; }
+  function injectNav() {
+    var links = document.querySelectorAll('nav a[href="/shared"]');
+    links.forEach(function (a) {
+      if (a.parentNode.querySelector("a[data-fv-wealth]")) { paintNav(a.parentNode.querySelector("a[data-fv-wealth]")); return; }
+      var c = a.cloneNode(true); c.setAttribute("href", "#/wealth"); c.setAttribute("data-fv-wealth", "1");
+      var svg = c.querySelector("svg"); if (svg) { var tmp = el("div", null, ICON).firstChild; svg.replaceWith(tmp); }
+      var spans = c.querySelectorAll("span"); spans.forEach(function (s) { if (/Household|Family/.test(s.textContent)) s.textContent = /Family/.test(s.textContent) ? "Wealth" : "Wealth"; });
+      c.querySelectorAll("[style]").forEach(function (n) { var st = (n.getAttribute("style") || "").replace(/opacity:[^;]*;?|transform:[^;]*;?/g, "").trim(); n.setAttribute("style", st); n.setAttribute("data-fv-orig", st); n.style.opacity = "1"; n.style.transform = "none"; });
+      var tip = c.getAttribute("data-state"); if (tip) c.removeAttribute("data-state");
+      a.insertAdjacentElement("afterend", c); paintNav(c);
+    });
+  }
+  function paintNav(c) {
+    var inner = c.firstElementChild; if (!inner) return;
+    var on = onWealth();
+    inner.classList.toggle("fv-nav-active", on);
+    c.querySelectorAll("[data-fv-orig]").forEach(function (n) { if (on) n.style.color = ""; else n.setAttribute("style", n.getAttribute("data-fv-orig")); });
+  }
+
+  /* ---------- page mount ---------- */
+  var tab = gm().wTab || "tax", host = null, mounted = false;
+  function mount() {
+    var on = onWealth(), main = document.querySelector("main");
+    if (!main) return;
+    if (on && !mounted) {
+      loadW(); main.setAttribute("data-fv-w", "1"); document.body.setAttribute("data-fv-w", "1"); host = el("div"); host.id = "fv-wealth"; main.appendChild(host); mounted = true;
+      main.scrollTop = 0; render();
+    } else if (!on && mounted) {
+      main.removeAttribute("data-fv-w"); document.body.removeAttribute("data-fv-w"); if (host) host.remove(); host = null; mounted = false;
+    } else if (on && mounted && !host.isConnected) { main.appendChild(host); }
+    document.querySelectorAll("nav a[data-fv-wealth]").forEach(paintNav);
+  }
+  setInterval(function () { injectNav(); mount(); }, 350);
+  addEventListener("hashchange", function () { mount(); });
+
+  /* ---------- helpers for forms ---------- */
+  function field(label, key, opts) {
+    opts = opts || {};
+    var v = W[key] === 0 || W[key] === "" ? "" : W[key];
+    return "<div class='fw-f'><label for='fw-" + key + "'>" + label + "</label><div class='in'>" + (opts.prefix === false ? "" : "<span>$</span>") +
+      "<input id='fw-" + key + "' data-k='" + key + "' inputmode='decimal' type='text' value='" + (v === "" ? "" : esc(v)) + "' placeholder='0'>" + (opts.suffix ? "<span>" + opts.suffix + "</span>" : "") + "</div></div>";
+  }
+  function tog(label, sub, key) {
+    return "<div class='fw-tog'><div><b>" + label + "</b><span>" + sub + "</span></div><button type='button' class='fv-sw' role='switch' aria-checked='" + (W[key] ? "true" : "false") + "' data-t='" + key + "' aria-label='" + label + "'><i></i></button></div>";
+  }
+  function pForEngine() { return Object.assign({}, W, { salary: num(W.salary), bonus: num(W.bonus), k401Pre: num(W.k401Pre), k401Roth: num(W.k401Roth), hsa: num(W.hsa), matchPct: num(W.matchPct), stateRate: num(W.stateRate), extraItemized: num(W.extraItemized) }); }
+
+  /* ---------- Next best action ---------- */
+  function nextAction() {
+    var p = pForEngine();
+    if (!p.salary) return ["Start here", "Add your salary in the Tax Lab below and FavFI will estimate your 2026 taxes and show the biggest ways to lower them."];
+    var L = E.levers(p), top = L.list[0], d = data();
+    var match = L.list.filter(function (x) { return x.match; })[0];
+    if (match) return ["Best next step", "Raise your 401(k) contribution enough to capture your employer match. That is about <b>" + fmt(match.saves) + " a year</b> of free money."];
+    if (top) return ["Best next step", top.title + ": about <b>" + fmt(top.saves) + "</b> less tax this year" + (top.add ? " for " + fmt(top.add) + " more saved." : ".")];
+    var ru = runway(d); if (ru && ru.months < 3) return ["Best next step", "Build your emergency fund toward three to six months of expenses. You have about <b>" + ru.months.toFixed(1) + " months</b> now."];
+    return ["You're in good shape", "Your main tax levers are in use. Keep an eye on the Calendar tab for year-end deadlines."];
+  }
+
+  /* ---------- Tax Lab ---------- */
+  function taxInputs() {
+    return "<div class='fw-card' id='fw-inputs'><h2>Your tax profile</h2><p class='hint'>Estimates for tax year " + E.YEAR + ". Saved on this device and included in your backups.</p>" +
+      "<div class='fw-grid'><div class='fw-f'><label for='fw-fs'>Filing status</label><div class='in'><select id='fw-fs' data-k='fs'><option value='single'" + (W.fs === "single" ? " selected" : "") + ">Single</option><option value='mfj'" + (W.fs === "mfj" ? " selected" : "") + ">Married filing jointly</option></select></div></div>" +
+      field("Salary (per year)", "salary") + field("Bonus (per year)", "bonus") +
+      field("State income tax rate", "stateRate", { prefix: false, suffix: "%" }) + "</div>" +
+      "<p class='hint' style='margin:10px 0 0'>For the state rate, use your effective rate (0% if your state has no income tax, such as TX, FL, WA, NV or TN). Many states are between 3% and 6% at this income.</p>" +
+      "<h2 style='margin-top:20px'>What you save today</h2><div class='fw-grid'>" + field("Pre-tax 401(k) per year", "k401Pre") + field("Roth 401(k) per year", "k401Roth") + field("Employer match (% of pay)", "matchPct", { prefix: false, suffix: "%" }) + field("HSA per year", "hsa") + "</div>" +
+      tog("My health plan is HSA-eligible", "A high-deductible plan that qualifies for an HSA", "hsaEligible") + (W.hsaEligible ? tog("Family coverage", "Family limit is higher than self-only", "hsaFamily") : "") +
+      tog("I'm 50 or older", "Adds the 401(k) catch-up", "age50") + (W.hsaEligible ? tog("I'm 55 or older", "Adds the HSA catch-up", "age55") : "") +
+      "<div class='fw-grid' style='margin-top:12px'>" + field("Other itemized deductions (optional)", "extraItemized") + "</div><p class='hint' style='margin:8px 0 0'>Only fill this in if you itemize (for example mortgage interest plus state and local taxes). Most people at this income take the standard deduction.</p>" +
+      "<div id='fw-salnote'></div></div>";
+  }
+  function taxResults() {
+    var p = pForEngine(); if (!p.salary) return "<div class='fw-card'><h2>Your 2026 estimate</h2><p class='hint'>Add your salary above to see your estimate.</p></div>";
+    var L = E.levers(p), e = L.base, tot = Math.max(1, e.gross);
+    var seg = [["Federal tax", e.fed, "#c9735b"], ["Social Security & Medicare", e.fica, "#d9a441"], ["State tax", e.state, "#8aa7c4"], ["Saved (401k / HSA)", e.saved, "hsl(152 30% 36%)"], ["Take-home", e.takeHome, "hsl(152 20% 80%)"]];
+    var bar = seg.map(function (s) { return "<i style='width:" + Math.max(0, s[1] / tot * 100).toFixed(2) + "%;background:" + s[2] + "'></i>"; }).join("");
+    var leg = seg.map(function (s) { return "<span><i style='background:" + s[2] + "'></i>" + s[0] + " " + fmt(s[1]) + "</span>"; }).join("");
+    var rows = L.list.map(function (l) {
+      return "<div class='fw-lev'><div class='fw-lh'><b>" + l.title + "</b><em>" + (l.match ? "+" + fmt(l.saves) + " free" : "−" + fmt(l.saves) + " tax") + "</em></div>" +
+        "<p>" + (l.match ? "Contribute " + fmt(l.add) + " more" : "Save " + fmt(l.add) + " more") + (l.match ? " to get your full match." : ". Your take-home falls by about " + fmt(l.cost) + " a year (" + fmt(l.cost / 12) + " a month), not the full " + fmt(l.add) + ".") + "</p>" +
+        "<details><summary>Why this works</summary><p>" + l.why + " <br><br><i>" + l.note + "</i></p></details></div>";
+    }).join("") || "<p class='hint'>You're already using the main levers we can see from your numbers.</p>";
+    var room = e.room === Infinity ? "" : "You're in the <b>" + Math.round(e.marginal * 100) + "%</b> federal bracket with " + fmt(e.room) + " of room before the next one. Every extra $1,000 you save pre-tax lowers your federal tax by about " + fmt(1000 * e.marginal) + ".";
+    var ph = E.LIM.rothIra[e.fs], magi = e.agi, roth = magi < ph[0] ? "Your income is under the Roth IRA limit, so you can contribute up to " + fmt(E.LIM.ira) + " directly." : magi < ph[1] ? "Your income is in the Roth IRA phase-out range (" + fmt(ph[0]) + " to " + fmt(ph[1]) + "), so your allowed amount shrinks. Ask a CPA about the exact figure." : "Your income is above the Roth IRA limit. Ask a CPA about a \"backdoor\" Roth.";
+    var rothVs = e.marginal >= 0.24 ? "At a " + Math.round(e.marginal * 100) + "% bracket, pre-tax contributions usually save more today. Roth makes more sense if you expect a higher bracket later." : "At a " + Math.round(e.marginal * 100) + "% bracket, Roth contributions are often attractive because you pay tax at a lower rate now.";
+    var maxK = E.LIM.k401 + (W.age50 ? E.LIM.k401Catch : 0), cur = num(W.k401Pre);
+    return "<div class='fw-card'><h2>Your " + E.YEAR + " estimate</h2><p class='hint'>Federal, payroll and state tax on " + fmt(e.gross) + " of pay.</p>" +
+      "<div class='fw-big'><div><b>" + fmt(e.total) + "</b><span>estimated total tax (" + (e.effective * 100).toFixed(1) + "% of pay)</span></div><div><b>" + fmt(e.takeHome / 12) + "</b><span>take-home per month after saving</span></div></div>" +
+      "<div class='fw-bar'>" + bar + "</div><div class='fw-leg'>" + leg + "</div><p class='hint' style='margin:14px 0 0'>" + room + "</p></div>" +
+      "<div class='fw-card'><h2>Ways to lower your tax</h2><p class='hint'>Ranked by dollars saved. Each uses your own numbers.</p>" + rows + "</div>" +
+      "<div class='fw-card'><h2>Try a 401(k) amount</h2><p class='hint'>Drag to see what a different contribution does.</p><div class='fw-big' style='margin:0 0 6px'><div><b id='fw-sv'>" + fmt(cur) + "</b><span>pre-tax 401(k) per year</span></div><div><b id='fw-ss'>" + fmt(0) + "</b><span>less tax than your current plan</span></div></div>" +
+      "<input type='range' id='fw-sl' class='fw-slide' min='0' max='" + maxK + "' step='500' value='" + Math.min(cur, maxK) + "' style='--p:" + (Math.min(cur, maxK) / maxK * 100) + "%;-webkit-appearance:none;appearance:none;height:32px;background:transparent'><div class='fv-tk'><span>$0</span><span>" + fmt(maxK) + "</span></div><p class='hint' id='fw-so' style='margin:8px 0 0'></p></div>" +
+      "<div class='fw-card'><h2>Retirement accounts</h2><p class='hint'>" + roth + "</p><p class='hint' style='margin:0'>" + rothVs + "</p></div>";
+  }
+  function taxAssumptions() {
+    return "<div class='fw-card'><h2>How these numbers work</h2><p class='fw-ft'>Federal income tax uses the " + E.YEAR + " brackets for single and married-filing-jointly filers and the standard deduction (" + fmt(E.STD.single) + " single, " + fmt(E.STD.mfj) + " joint) unless you enter itemized deductions. Payroll tax uses 6.2% Social Security up to " + fmt(E.LIM.ssBase) + " of wages plus 1.45% Medicare (and 0.9% above $200,000 single or $250,000 joint). State tax is your rate applied to income after 401(k) and HSA. Not included: tax credits (such as child credits), head-of-household status, local taxes, AMT, investment income, or bonus withholding differences. These are educational estimates, not tax advice. Check figures at <a href='https://www.irs.gov' target='_blank' rel='noopener'>IRS.gov</a> and with a CPA before acting. Sources: <a href='https://www.accountingtoday.com/news/irs-ups-limits-for-401k-and-ira-contributions-in-2026' target='_blank' rel='noopener'>Accounting Today</a>, <a href='https://blog.carnegieinvest.com/tax-updates-for-2026' target='_blank' rel='noopener'>Carnegie Investment Counsel</a>, <a href='https://michaelryanmoney.com/?p=27397' target='_blank' rel='noopener'>Michael Ryan Money</a>.</p></div>";
+  }
+
+  /* ---------- Protect ---------- */
+  var CHECKS = [
+    ["efund", "Emergency fund of 3 to 6 months", "Cash you can reach quickly so a surprise bill never turns into debt. Tracked automatically above.", true],
+    ["disab", "Disability insurance", "Your paycheck is your biggest asset. Check whether your employer offers long-term disability and how much of your pay it replaces."],
+    ["life", "Life insurance (if anyone depends on you)", "Term life is usually the simplest and cheapest way to protect dependents."],
+    ["umb", "Umbrella liability policy", "Adds protection above your home and auto limits. It is often inexpensive for the coverage."],
+    ["will", "A will or trust", "Says who gets what and who cares for dependents. Without one, state law decides."],
+    ["benef", "Beneficiaries on every account", "401(k), IRA, bank, brokerage and insurance. Beneficiary forms override your will, so keep them current."],
+    ["poa", "Power of attorney", "Names someone to handle money and paperwork if you can't."],
+    ["hcd", "Healthcare directive", "Records your medical wishes and who speaks for you."],
+    ["pw", "Password manager and emergency access", "Lets a trusted person reach key accounts if something happens."],
+    ["freeze", "Credit freeze at all three bureaus", "Free, and the best defense against identity theft."],
+    ["review", "Review everything once a year", "Life changes: a raise, a move, a new family member. Put it on your calendar."]
+  ];
+  function runway(d) {
+    d = d || data(); if (!d) return null;
+    var liquid = (d.assets || []).filter(function (a) { return /sav|check|cash/i.test(a.type || a.name || ""); }).reduce(function (s, a) { return s + (+a.value || 0); }, 0);
+    var monthly = (d.expenses || []).reduce(function (s, x) { return s + (+x.amount || 0); }, 0) + (d.creditCards || []).reduce(function (s, c) { return s + (+c.minimumPayment || 0); }, 0);
+    if (!monthly) return null; return { liquid: liquid, monthly: monthly, months: liquid / monthly };
+  }
+  function protectHtml() {
+    var ru = runway(), done = CHECKS.filter(function (c) { return W.checks[c[0]]; }).length, pct = Math.round(done / CHECKS.length * 100);
+    var ef = ru ? "<div class='fw-card'><h2>Emergency fund runway</h2><div class='fw-big'><div><b>" + ru.months.toFixed(1) + "</b><span>months of expenses in savings</span></div><div><b>" + fmt(ru.liquid) + "</b><span>liquid savings</span></div><div><b>" + fmt(ru.monthly) + "</b><span>monthly expenses and minimums</span></div></div>" +
+      "<div class='fw-prog'><i style='width:" + Math.min(100, ru.months / 6 * 100) + "%'></i></div><p class='hint' style='margin:6px 0 0'>" + (ru.months >= 6 ? "You have a full six months of cushion." : ru.months >= 3 ? "You have a solid start. Six months is a comfortable target; you're " + fmt(ru.monthly * 6 - ru.liquid) + " away." : "Aim for at least three months. You're " + fmt(ru.monthly * 3 - ru.liquid) + " away, or about " + fmt((ru.monthly * 3 - ru.liquid) / 12) + " a month for a year.") + "</p></div>" : "";
+    var items = CHECKS.map(function (c) {
+      var on = !!W.checks[c[0]];
+      return "<div class='fw-chk' data-done='" + on + "'><button type='button' class='fw-box' role='checkbox' aria-checked='" + on + "' aria-label='" + esc(c[1]) + "' data-c='" + c[0] + "'><svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'><path d='M5 12l5 5L20 7'/></svg></button><div><b>" + c[1] + "</b><span>" + c[2] + "</span></div></div>";
+    }).join("");
+    return ef + "<div class='fw-card'><h2>Protection checklist</h2><p class='hint'>The foundations that keep a plan from unraveling. Tick items as you finish them.</p><div class='fw-prog'><i style='width:" + pct + "%'></i></div><p class='hint' style='margin:4px 0 8px'>" + done + " of " + CHECKS.length + " done</p>" + items + "</div>";
+  }
+
+  /* ---------- Give ---------- */
+  function giveHtml() {
+    var p = pForEngine(), gift = num(W.gift), g = gift > 0 && p.salary ? E.giving(p, gift) : null, b = gift > 0 && p.salary ? E.bunching(p, gift) : null;
+    var inp = "<div class='fw-card'><h2>Giving planner</h2><p class='hint'>See how the 2026 charitable rules affect what you give. Uses your tax profile from the Tax Lab.</p><div class='fw-grid'>" + field("Cash you give each year", "gift") + "</div></div>";
+    var res = "";
+    if (!p.salary) res = "<div class='fw-card'><p class='hint'>Add your salary in the Tax Lab first.</p></div>";
+    else if (g) {
+      res = "<div class='fw-card'><h2>What giving " + fmt(gift) + " does for your taxes</h2><div class='fw-big'><div><b>" + fmt(g.saves) + "</b><span>federal tax saved this year</span></div></div>" +
+        "<p class='hint' style='margin:0 0 10px'>" + (g.itemizes ? "Itemizing wins for you: your deductions beat the standard deduction." : "Taking the standard deduction wins. Under the new 2026 rule you can still deduct up to " + fmt(p.fs === "mfj" ? 2000 : 1000) + " of cash gifts to public charities, even without itemizing.") + " Itemizers can only deduct the part of giving above 0.5% of income (" + fmt(g.floor) + " for you).</p>" +
+        "<p class='hint' style='margin:0'><b>Bunching:</b> giving " + fmt(gift * 2) + " every other year instead of " + fmt(gift) + " each year " + (b.saves > 50 ? "could save about <b>" + fmt(b.saves) + "</b> over two years, if you stay under the standard deduction otherwise. A donor-advised fund lets you bunch the tax deduction while still spreading the actual gifts over time." : "doesn't help much at these numbers.") + "</p></div>";
+    } else res = "<div class='fw-card'><p class='hint'>Enter how much you give each year to see the effect.</p></div>";
+    var verdict = gift >= 50000 || (num(W.gift) * 20) >= 1000000 ? "Your giving may be large enough to discuss a private foundation with an attorney and CPA, but a donor-advised fund is still worth comparing." : "At your level of giving, a <b>donor-advised fund</b> is usually the better fit. A private foundation is generally worth its cost only at much larger scale.";
+    var cols = "<div class='fw-card'><h2>Giving vehicles compared</h2><p class='hint'>General rules of thumb. Confirm details with a CPA or attorney before acting.</p><div class='fw-cols'>" +
+      "<div class='fw-col'><h3>Give directly</h3><ul><li><b>Setup:</b> none</li><li><b>Ongoing:</b> keep receipts</li><li><b>Control:</b> you choose every gift</li><li><b>2026 rules:</b> non-itemizer deduction applies to cash gifts to public charities</li></ul></div>" +
+      "<div class='fw-col rec'><span class='fw-tag'>Often the fit</span><h3>Donor-advised fund</h3><ul><li><b>Setup:</b> minutes, low minimums at many sponsors</li><li><b>Ongoing:</b> sponsor handles filings; small fee</li><li><b>Control:</b> you recommend grants over time</li><li><b>Deduction:</b> at contribution; higher limits than a foundation; not eligible for the new non-itemizer deduction</li></ul></div>" +
+      "<div class='fw-col'><h3>Private foundation</h3><ul><li><b>Setup:</b> legal and filing costs</li><li><b>Ongoing:</b> annual Form 990-PF, about 1.4% excise tax on investment income, roughly 5% yearly payout</li><li><b>Control:</b> the most, including family involvement</li><li><b>Deduction:</b> lower limits (cash 30% of AGI vs 60% for public charities)</li></ul></div></div>" +
+      "<p class='hint' style='margin:14px 0 0'>" + verdict + " Gifts to donor-advised funds and private foundations don't qualify for the new non-itemizer deduction, per <a href='https://www.regions.com/insights/wealth/article/2026-charitable-deduction-rules' target='_blank' rel='noopener' style='color:hsl(var(--primary))'>Regions</a>.</p></div>";
+    return inp + "<div id='fw-gres'>" + res + "</div>" + cols;
+  }
+
+  /* ---------- Calendar ---------- */
+  function calendarHtml() {
+    var now = new Date(), y = now.getFullYear();
+    var items = [
+      [new Date(y, 11, 1), "Check your 401(k) and benefits elections", "Confirm your contribution rate will reach your target by your last paycheck of the year. Payroll cutoffs are often earlier than Dec 31, so check with HR.", "c1"],
+      [new Date(y, 11, 15), "Fund a donor-advised fund early", "Asset transfers can take days. Aim to finish by mid-December so the gift counts for this year.", "c2"],
+      [new Date(y, 11, 31), "Year-end deadline", "Charitable gifts made by Dec 31 count for " + y + ". Spend any use-it-or-lose-it FSA money. Review taxable investments for losses you could use.", "c3"],
+      [new Date(y + 1, 0, 15), "Q4 estimated tax payment (if you have side income)", "Only needed if you have income with no tax withheld, such as freelance or rental income.", "c4"],
+      [new Date(y + 1, 0, 31), "Tax forms arrive", "W-2s from employers by Jan 31. Gather 1099s from banks and brokerages through mid-February.", "c5"],
+      [new Date(y + 1, 3, 15), "File your " + y + " return or extend", "Also the last day to contribute to an IRA or HSA for " + y + ". A filing extension does not extend time to pay.", "c6"]
+    ];
+    var rows = items.map(function (it) {
+      var days = Math.ceil((it[0] - now) / 864e5), key = "cal" + y + it[3], on = !!W.checks[key];
+      var when = days < 0 ? "passed" : days === 0 ? "today" : days === 1 ? "tomorrow" : "in " + days + " days";
+      return "<div class='fw-cal'><div class='fw-date'><b>" + it[0].getDate() + "</b><span>" + it[0].toLocaleString(undefined, { month: "short" }) + "</span></div><div style='flex:1;min-width:0'><b style='font:500 15px system-ui'>" + it[1] + "</b> <span class='fw-pill'>" + when + "</span><p style='margin:4px 0 0;font-size:13px;line-height:1.45;color:hsl(var(--muted-foreground))'>" + it[2] + "</p></div>" +
+        "<button type='button' class='fw-box' role='checkbox' aria-checked='" + on + "' aria-label='Mark done' data-c='" + key + "'><svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'><path d='M5 12l5 5L20 7'/></svg></button></div>";
+    }).join("");
+    return "<div class='fw-card'><h2>Tax calendar</h2><p class='hint'>Key dates for tax year " + y + ", sorted by what's next. Dates are typical; deadlines that fall on a weekend or holiday can shift.</p>" + rows + "</div>";
+  }
+
+  /* ---------- Ask Claude + CPA summary ---------- */
+  function snapshot(mode, names) {
+    var d = data() || {}, p = pForEngine(), e = E.estimate(p), L = E.levers(p), ru = runway(d), lines = [];
+    var cards = (d.creditCards || []), assets = d.assets || [], ex = d.expenses || [], prof = (d.profile || [])[0] || {};
+    var head = mode === "cpa" ? "FavFI summary for tax year " + E.YEAR + " (prepared " + new Date().toLocaleDateString() + "). Estimates for discussion, not tax advice." :
+      "I track my money in an app called FavFI. Please act as my accountant and wealth advisor. Use the numbers below, tell me what you'd do and why, flag anything I should confirm with a licensed CPA or attorney, and ask me anything you need to know. Tax year " + E.YEAR + ", United States.";
+    lines.push(head, "");
+    lines.push("PROFILE", "- Filing status: " + (p.fs === "mfj" ? "Married filing jointly" : "Single"), "- State income tax (effective): " + (p.stateRate || 0) + "%", "- Age 50+: " + (p.age50 ? "yes" : "no"));
+    lines.push("", "INCOME", "- Salary: " + fmt(p.salary), "- Bonus: " + fmt(p.bonus));
+    lines.push("", "WHAT I SAVE TODAY", "- Pre-tax 401(k): " + fmt(p.k401Pre), "- Roth 401(k): " + fmt(p.k401Roth), "- Employer match: " + (p.matchPct ? "up to " + p.matchPct + "% of pay" : "unknown or none"), "- HSA: " + (p.hsaEligible ? "eligible, contributing " + fmt(p.hsa) : "not eligible or unknown"));
+    lines.push("", "FAVFI ESTIMATE", "- Adjusted gross income: " + fmt(e.agi), "- Taxable income: " + fmt(e.taxable), "- Federal tax: " + fmt(e.fed), "- Social Security and Medicare: " + fmt(e.fica), "- State tax: " + fmt(e.state), "- Total tax: " + fmt(e.total) + " (" + (e.effective * 100).toFixed(1) + "% effective, " + Math.round(e.marginal * 100) + "% federal bracket)");
+    if (L.list.length) { lines.push("", "LEVERS FAVFI SEES"); L.list.forEach(function (l) { lines.push("- " + l.title + ": save " + fmt(l.add) + " more, about " + fmt(l.saves) + " less tax" + (l.match ? " (employer match)" : "")); }); }
+    lines.push("", "ASSETS"); assets.forEach(function (a, i) { lines.push("- " + (names ? a.name + " (" + a.type + ")" : "Asset " + (i + 1) + " (" + a.type + ")") + ": " + fmt(a.value)); });
+    lines.push("", "DEBTS"); cards.forEach(function (c, i) { lines.push("- " + (names ? c.name : "Debt " + (i + 1)) + ": " + fmt(c.balance) + " at " + c.apr + "% APR, minimum " + fmt(c.minimumPayment) + "/mo"); });
+    lines.push("", "MONTHLY", "- Tracked expenses: " + fmt(ex.reduce(function (s, x) { return s + (+x.amount || 0); }, 0)), "- Savings goal: " + fmt(prof.savingsGoalMonthly || 0) + "/mo toward " + fmt(prof.savingsGoalTarget || 0), ru ? "- Emergency fund: about " + ru.months.toFixed(1) + " months of expenses in liquid savings" : "");
+    var done = CHECKS.filter(function (c) { return W.checks[c[0]]; }).map(function (c) { return c[1]; }), open = CHECKS.filter(function (c) { return !W.checks[c[0]]; }).map(function (c) { return c[1]; });
+    lines.push("", "PROTECTION CHECKLIST", "- Done: " + (done.join("; ") || "none"), "- Open: " + (open.join("; ") || "none"));
+    if (num(W.gift) > 0) lines.push("", "GIVING", "- Planned cash giving: " + fmt(num(W.gift)) + "/yr; considering a donor-advised fund vs a family foundation");
+    if (mode !== "cpa") lines.push("", "WHAT I'D LIKE HELP WITH", "1. Am I using the right tax levers, and in what order?", "2. Roth vs pre-tax for my situation?", "3. Is a family foundation worth it for me, or is a donor-advised fund better?", "4. What should I do before year-end?");
+    return lines.filter(function (l) { return l !== undefined; }).join("\n");
+  }
+  function sheet(inner) {
+    var s = el("div", "fv-sheet"), c = el("div", "fv-card", inner); c.style.maxHeight = "86vh"; c.style.overflow = "auto"; s.appendChild(c);
+    s.addEventListener("click", function (e) { if (e.target === s) s.remove(); }); document.body.appendChild(s); return s;
+  }
+  function flash(btn, msg) { var o = btn.textContent; btn.textContent = msg; setTimeout(function () { btn.textContent = o; }, 1600); }
+  function openAsk() {
+    var names = false;
+    var s = sheet("<h3>Ask Claude</h3><p>This copies a summary of your numbers. Paste it into your Claude chat to get advice. Nothing is sent anywhere from here.</p><div class='fw-tog' style='border-top:0;padding-top:0'><div><b>Include account and debt names</b><span>Off keeps names out of the summary</span></div><button type='button' class='fv-sw' role='switch' aria-checked='false' id='fw-names'><i></i></button></div><textarea id='fw-snap' readonly style='width:100%;height:240px;border-radius:14px;border:1px solid hsl(var(--border));background:hsl(var(--muted)/.4);color:hsl(var(--foreground));font:12.5px/1.5 ui-monospace,Menlo,monospace;padding:12px;box-sizing:border-box;margin:6px 0 14px'></textarea><div class='row'><button class='fv-btn g' id='fw-x'>Close</button><button class='fv-btn' id='fw-cp'>Copy summary</button></div>");
+    var ta = s.querySelector("#fw-snap"); function fill() { ta.value = snapshot("ai", names); } fill();
+    s.querySelector("#fw-names").onclick = function (ev) { names = !names; ev.currentTarget.setAttribute("aria-checked", names ? "true" : "false"); fill(); };
+    s.querySelector("#fw-x").onclick = function () { s.remove(); };
+    s.querySelector("#fw-cp").onclick = function (ev) {
+      var b = ev.currentTarget;
+      function legacy() { ta.select(); try { document.execCommand("copy"); flash(b, "Copied"); } catch (e) { flash(b, "Press and hold to copy"); } }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).then(function () { flash(b, "Copied"); }, legacy); else legacy();
+    };
+  }
+  function saveText(name, text) {
+    try {
+      var f = new File([text], name, { type: "text/plain" });
+      if (navigator.canShare && navigator.canShare({ files: [f] })) { navigator.share({ files: [f], title: name }).catch(function () {}); return; }
+    } catch (e) {}
+    var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" })); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  }
+  function takeItFurther() {
+    return "<div class='fw-card'><h2>Take it further</h2><p class='hint'>Get a second opinion from Claude, or hand your numbers to a professional.</p><div class='fw-acts'><button class='fw-btn' data-a='ask'>Ask Claude</button><button class='fw-btn g' data-a='cpa'>Save a CPA summary</button></div></div>";
+  }
+
+  /* ---------- render ---------- */
+  function render() {
+    if (!host) return;
+    var nba = nextAction();
+    var tabs = [["tax", "Tax Lab"], ["protect", "Protect"], ["give", "Give"], ["cal", "Calendar"]];
+    var body = tab === "tax" ? taxInputs() + "<div id='fw-res'>" + taxResults() + "</div>" + taxAssumptions() : tab === "protect" ? protectHtml() : tab === "give" ? giveHtml() : calendarHtml();
+    host.innerHTML = "<h1>Wealth</h1><p class='sub'>Your tax plan and the foundations that protect it. Private, on this device.</p>" +
+      "<div class='fw-card fw-nba'><small>" + nba[0] + "</small><p>" + nba[1] + "</p></div>" +
+      "<div class='fw-tabs' role='tablist'>" + tabs.map(function (t) { return "<button role='tab' aria-selected='" + (tab === t[0]) + "' data-tab='" + t[0] + "'>" + t[1] + "</button>"; }).join("") + "</div>" + body + takeItFurther() +
+      "<p class='fw-ft' style='padding:0 6px'>FavFI gives educational estimates, not tax, legal or investment advice. Rules change and your situation is unique; confirm important decisions with a qualified CPA or attorney.</p>";
+    wireSlider(); salaryNote();
+  }
+  function salaryNote() {
+    var n = host && host.querySelector("#fw-salnote"); if (!n) return; var d = data(), prof = d && d.profile && d.profile[0];
+    if (prof && num(W.salary) && Math.abs(prof.annualSalary - num(W.salary)) > 1) { n.innerHTML = "<p class='hint' style='margin:12px 0 0'>Your FavFI setup still shows " + fmt(prof.annualSalary) + ". <button type='button' class='fw-btn g' style='min-height:36px;padding:6px 12px;font-size:13px' data-a='sal'>Update my salary everywhere</button></p>"; } else n.innerHTML = "";
+  }
+  function refreshResults() { var r = host && host.querySelector("#fw-res"); if (r) { r.innerHTML = taxResults(); wireSlider(); } var nb = host && host.querySelector(".fw-nba"); if (nb) { var n = nextAction(); nb.innerHTML = "<small>" + n[0] + "</small><p>" + n[1] + "</p>"; } salaryNote(); }
+  function wireSlider() {
+    var sl = host && host.querySelector("#fw-sl"); if (!sl) return;
+    function upd() {
+      var v = +sl.value, p = pForEngine(), a = E.estimate(p), b = E.estimate(Object.assign({}, p, { k401Pre: v })), max = +sl.max;
+      sl.style.setProperty("--p", (v / max * 100) + "%");
+      host.querySelector("#fw-sv").textContent = fmt(v);
+      var diff = a.total - b.total; host.querySelector("#fw-ss").textContent = (diff >= 0 ? "" : "+") + fmt(Math.abs(diff)).replace("-", "");
+      host.querySelector("#fw-so").textContent = "Take-home per month would be " + fmt(b.takeHome / 12) + " compared with " + fmt(a.takeHome / 12) + " now. Federal bracket: " + Math.round(b.marginal * 100) + "%.";
+    }
+    sl.id = "fw-sl"; sl.className = "fw-slide fw-range"; sl.addEventListener("input", upd); upd();
+  }
+  css.textContent += ".fw-range{-webkit-appearance:none;appearance:none;width:100%;height:32px;margin:0;background:transparent;--p:0%}.fw-range::-webkit-slider-runnable-track{height:8px;border-radius:99px;background:linear-gradient(to right,hsl(var(--primary)) var(--p),hsl(var(--muted)) var(--p))}.fw-range::-webkit-slider-thumb{-webkit-appearance:none;width:28px;height:28px;margin-top:-10px;border-radius:50%;background:#fff;border:3px solid hsl(var(--primary));box-shadow:0 2px 8px rgba(40,30,10,.25)}";
+
+  /* ---------- events (delegated) ---------- */
+  document.addEventListener("input", function (e) {
+    var t = e.target; if (!host || !host.contains(t) || !t.getAttribute) return;
+    var k = t.getAttribute("data-k"); if (!k) return;
+    if (t.tagName === "SELECT") W[k] = t.value; else W[k] = (k === "stateRate" || k === "matchPct") ? num(t.value) : t.value === "" ? 0 : num(t.value);
+    saveW(); if (tab === "tax") refreshResults(); else if (tab === "give") renderGiveOnly();
+  });
+  function renderGiveOnly() {
+    var r = host.querySelector("#fw-gres"); if (!r) return;
+    var tmp = el("div", null, giveHtml()); r.innerHTML = tmp.querySelector("#fw-gres").innerHTML;
+    var nb = host.querySelector(".fw-nba"); if (nb) { var n = nextAction(); nb.innerHTML = "<small>" + n[0] + "</small><p>" + n[1] + "</p>"; }
+  }
+  document.addEventListener("click", function (e) {
+    var t = e.target.closest && e.target.closest("button"); if (!t || !host || !host.contains(t)) return;
+    if (t.hasAttribute("data-tab")) { tab = t.getAttribute("data-tab"); sm({ wTab: tab }); render(); return; }
+    if (t.hasAttribute("data-t")) { var k = t.getAttribute("data-t"); W[k] = !W[k]; saveW(); render(); return; }
+    if (t.hasAttribute("data-c")) { var c = t.getAttribute("data-c"); W.checks[c] = !W.checks[c]; saveW(); t.setAttribute("aria-checked", W.checks[c] ? "true" : "false"); t.closest(".fw-chk") && t.closest(".fw-chk").setAttribute("data-done", !!W.checks[c]); if (W.checks[c]) { try { navigator.vibrate && navigator.vibrate(8); } catch (x) {} } var nb = host.querySelector(".fw-prog i"); if (tab === "protect") render(); return; }
+    var a = t.getAttribute("data-a");
+    if (a === "ask") openAsk();
+    else if (a === "cpa") saveText("FavFI-CPA-summary-" + E.YEAR + ".txt", snapshot("cpa", true));
+    else if (a === "sal") {
+      var d = data(), prof = d.profile[0]; var body = { displayName: prof.displayName, annualSalary: num(W.salary), monthlyAdditionalIncome: prof.monthlyAdditionalIncome || 0, savingsGoalMonthly: prof.savingsGoalMonthly || 0, savingsGoalTarget: prof.savingsGoalTarget || 0, payoffAggressiveness: prof.payoffAggressiveness || "moderate" };
+      fetch("/api/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(function () { try { window.__qc && window.__qc.invalidateQueries(); } catch (x) {} salaryNote(); flash(t, "Updated"); });
+    }
+  });
 })();
 
 /* FavFI polish: splash, undo, swipe, milestones, recap, tour */
