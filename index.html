@@ -1637,7 +1637,12 @@ var FavFIEngine = (function () {
     ".fw-col h3{font:500 17px var(--app-font-serif);margin:0 0 8px}.fw-col ul{margin:0;padding:0;list-style:none;font-size:13px;line-height:1.5;color:hsl(var(--muted-foreground))}.fw-col li{padding:4px 0}.fw-col li b{color:hsl(var(--foreground));font-weight:500}.fw-tag{display:inline-block;font:600 10.5px system-ui;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:99px;background:hsl(var(--primary));color:hsl(var(--primary-foreground));margin-bottom:8px}" +
     ".fw-cal{display:flex;gap:14px;align-items:flex-start;padding:13px 0;border-top:1px solid hsl(var(--border)/.6)}.fw-cal:first-of-type{border-top:0}.fw-date{flex:none;width:58px;text-align:center;padding:6px 0;border-radius:12px;background:hsl(var(--muted)/.6)}.fw-date b{display:block;font:500 20px var(--app-font-serif);line-height:1}.fw-date span{font:600 10px system-ui;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--muted-foreground))}" +
     ".fw-tbl{width:100%;border-collapse:collapse;font-size:14px}.fw-tbl th{font:600 12px system-ui;text-align:right;color:hsl(var(--muted-foreground));padding:6px 0}.fw-tbl td{padding:9px 0;border-top:1px solid hsl(var(--border)/.6);text-align:right}.fw-tbl td:first-child,.fw-tbl th:first-child{text-align:left}" +
-    ".fw-eye{position:absolute;right:0;top:20px;width:44px;height:44px;border-radius:50%;border:0;background:hsl(var(--muted));color:hsl(var(--muted-foreground))}#fv-wealth{position:relative}" +
+    ".fw-eye{position:absolute;right:0;top:18px;display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 14px 0 12px;border-radius:99px;border:1px solid hsl(var(--border));background:hsl(var(--card));color:hsl(var(--muted-foreground));font:500 13.5px system-ui;box-shadow:0 1px 2px rgba(70,50,20,.06),0 4px 14px rgba(70,50,20,.06);transition:transform .2s,background-color .25s,color .25s,border-color .25s}.fw-eye:active{transform:scale(.95)}.fw-eye[aria-pressed=true]{background:hsl(var(--primary)/.12);border-color:hsl(var(--primary)/.4);color:hsl(var(--primary))}.fw-eye svg{width:18px;height:18px}" +
+    "#fv-wealth{position:relative}" +
+    ".fw-card{transform-style:preserve-3d;will-change:transform;position:relative;transition:transform .35s cubic-bezier(.2,.8,.2,1),box-shadow .35s}.fw-card.tl{transition:transform .08s linear,box-shadow .2s}.fw-card::after{content:\"\";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;background:radial-gradient(260px circle at var(--gx,50%) var(--gy,0%),rgba(255,255,255,.55),transparent 65%);transition:opacity .3s}.fw-card.tl::after{opacity:.5}.fw-card.tl{box-shadow:0 2px 4px rgba(70,50,20,.06),0 18px 40px rgba(70,50,20,.14)}"+
+    "@keyframes fwUp{from{opacity:0;transform:translateY(16px) scale(.985)}to{opacity:1;transform:none}}@keyframes fwGrow{from{transform:scaleX(0)}to{transform:scaleX(1)}}@keyframes fwPop{0%{transform:scale(1)}40%{transform:scale(1.28)}100%{transform:scale(1)}}"+
+    "#fv-wealth>.fw-card,#fv-wealth>.fw-tabs{animation:fwUp .55s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0)*70ms)}#fv-wealth.fw-still>*{animation:none!important}"+
+    ".fw-bar i,.fw-prog i{transform-origin:left center;animation:fwGrow .9s cubic-bezier(.2,.8,.2,1) both;animation-delay:.25s}#fv-wealth.fw-still .fw-bar i,#fv-wealth.fw-still .fw-prog i{animation:none}.fw-box.pop{animation:fwPop .4s ease}.fw-btn:active,.fw-tabs button:active{transform:scale(.96)}.fw-btn,.fw-tabs button{transition:transform .15s,background-color .2s}.fw-range:active::-webkit-slider-thumb{transform:scale(1.15)}.fw-range::-webkit-slider-thumb{transition:transform .15s}" +
     ".fw-ft{font-size:12px;line-height:1.5;color:hsl(var(--muted-foreground))}.fw-ft a{color:hsl(var(--primary))}" +
     ".fw-acts{display:flex;flex-wrap:wrap;gap:10px}.fw-btn{border:0;border-radius:14px;padding:12px 18px;min-height:46px;font:600 15px system-ui;background:hsl(var(--primary));color:hsl(var(--primary-foreground))}.fw-btn.g{background:hsl(var(--muted));color:hsl(var(--foreground))}" +
     ".fw-slide{width:100%}.fw-pill{display:inline-block;padding:3px 10px;border-radius:99px;background:hsl(var(--muted));font:500 12.5px system-ui;color:hsl(var(--muted-foreground))}" +
@@ -1942,17 +1947,25 @@ var FavFIEngine = (function () {
   var EYE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
   var EYE_OFF = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.9 17.9A10.6 10.6 0 0 1 12 19c-6.5 0-10-7-10-7a18 18 0 0 1 4.1-5M9.9 5.2A9.7 9.7 0 0 1 12 5c6.5 0 10 7 10 7a18 18 0 0 1-2.2 3.2M1 1l22 22"/></svg>';
   /* ---------- render ---------- */
-  function render() {
+  function render(still) {
     if (!host) return;
     var nba = nextAction();
     var tabs = [["tax", "Tax Lab"], ["protect", "Protect"], ["give", "Give"], ["cal", "Calendar"]];
     var body = tab === "tax" ? taxInputs() + "<div id='fw-res'>" + taxResults() + "</div>" + taxAssumptions() : tab === "protect" ? protectHtml() : tab === "give" ? giveHtml() : calendarHtml();
     var hid = window.FavFIPrivacy && window.FavFIPrivacy.isHidden();
-    host.innerHTML = "<button type='button' class='fw-eye' data-a='eye' aria-label='" + (hid ? "Show amounts" : "Hide amounts") + "' title='" + (hid ? "Show amounts" : "Hide amounts") + "'>" + (hid ? EYE_OFF : EYE) + "</button><h1>Wealth</h1><p class='sub'>Your tax plan and the foundations that protect it. Private, on this device.</p>" +
+    host.innerHTML = "<button type='button' class='fw-eye' data-a='eye' aria-pressed='" + (hid ? "true" : "false") + "' aria-label='" + (hid ? "Show amounts" : "Hide amounts") + "'>" + (hid ? EYE_OFF : EYE) + "<span>" + (hid ? "Show amounts" : "Hide") + "</span></button><h1>Wealth</h1><p class='sub'>Your tax plan and the foundations that protect it. Private, on this device.</p>" +
       "<div class='fw-card fw-nba'><small>" + nba[0] + "</small><p>" + nba[1] + "</p></div>" +
       "<div class='fw-tabs' role='tablist'>" + tabs.map(function (t) { return "<button role='tab' aria-selected='" + (tab === t[0]) + "' data-tab='" + t[0] + "'>" + t[1] + "</button>"; }).join("") + "</div>" + body + takeItFurther() +
       "<p class='fw-ft' style='padding:0 6px'>FavFI gives educational estimates, not tax, legal or investment advice. Rules change and your situation is unique; confirm important decisions with a qualified CPA or attorney.</p>";
-    wireSlider(); salaryNote();
+    wireSlider(); salaryNote(); host.classList.toggle("fw-still", !!still);
+    [].forEach.call(host.children, function (c, i) { c.style.setProperty("--i", Math.min(i, 8)); }); if (!still) countBig(host);
+  }
+  function countBig(root) {
+    if (document.documentElement.classList.contains("fv-calm") || (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches)) return;
+    [].forEach.call(root.querySelectorAll(".fw-big b"), function (b) {
+      var m = /^([+\-]?)\$([\d,]+)$/.exec(b.textContent.trim()); if (!m) return; var to = +m[2].replace(/,/g, ""), t0 = performance.now(), dur = 900;
+      (function step(t) { var k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3); b.textContent = m[1] + "$" + Math.round(to * e).toLocaleString("en-US"); if (k < 1) requestAnimationFrame(step); })(t0);
+    });
   }
   function salaryNote() {
     var n = host && host.querySelector("#fw-salnote"); if (!n) return; var d = data(), prof = d && d.profile && d.profile[0];
@@ -1972,6 +1985,19 @@ var FavFIEngine = (function () {
   }
   css.textContent += ".fw-range{-webkit-appearance:none;appearance:none;width:100%;height:32px;margin:0;background:transparent;--p:0%}.fw-range::-webkit-slider-runnable-track{height:8px;border-radius:99px;background:linear-gradient(to right,hsl(var(--primary)) var(--p),hsl(var(--muted)) var(--p))}.fw-range::-webkit-slider-thumb{-webkit-appearance:none;width:28px;height:28px;margin-top:-10px;border-radius:50%;background:#fff;border:3px solid hsl(var(--primary));box-shadow:0 2px 8px rgba(40,30,10,.25)}";
 
+  /* ---------- 3D tilt (matches the other tabs) ---------- */
+  var tiltEl = null;
+  function tiltOff() { if (tiltEl) { tiltEl.classList.remove("tl"); tiltEl.style.transform = ""; tiltEl = null; } }
+  document.addEventListener("pointermove", function (e) {
+    var h = document.documentElement; if (!host || h.classList.contains("fv-notilt") || h.classList.contains("fv-calm")) return;
+    var c = e.target.closest && e.target.closest("#fv-wealth .fw-card"); if (!c || (document.activeElement && c.contains(document.activeElement) && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))) { tiltOff(); return; }
+    if (tiltEl && tiltEl !== c) tiltOff();
+    tiltEl = c; var r = c.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height, max = r.width > 600 ? 2.2 : 4.5;
+    c.classList.add("tl"); c.style.setProperty("--gx", x * 100 + "%"); c.style.setProperty("--gy", y * 100 + "%");
+    c.style.transform = "perspective(1000px) rotateX(" + ((0.5 - y) * max).toFixed(2) + "deg) rotateY(" + ((x - 0.5) * max).toFixed(2) + "deg) translateZ(6px)";
+  }, { passive: true });
+  document.addEventListener("pointerup", function (e) { if (e.pointerType !== "mouse") tiltOff(); }, true);
+  document.addEventListener("pointerleave", tiltOff, true); document.addEventListener("pointercancel", tiltOff, true);
   /* ---------- events (delegated) ---------- */
   document.addEventListener("input", function (e) {
     var t = e.target; if (!host || !host.contains(t) || !t.getAttribute) return;
@@ -1987,10 +2013,10 @@ var FavFIEngine = (function () {
   document.addEventListener("click", function (e) {
     var t = e.target.closest && e.target.closest("button"); if (!t || !host || !host.contains(t)) return;
     if (t.hasAttribute("data-tab")) { tab = t.getAttribute("data-tab"); sm({ wTab: tab }); render(); return; }
-    if (t.hasAttribute("data-t")) { var k = t.getAttribute("data-t"); W[k] = !W[k]; saveW(); render(); return; }
-    if (t.hasAttribute("data-c")) { var c = t.getAttribute("data-c"); W.checks[c] = !W.checks[c]; saveW(); t.setAttribute("aria-checked", W.checks[c] ? "true" : "false"); t.closest(".fw-chk") && t.closest(".fw-chk").setAttribute("data-done", !!W.checks[c]); if (W.checks[c]) { try { navigator.vibrate && navigator.vibrate(8); } catch (x) {} } var nb = host.querySelector(".fw-prog i"); if (tab === "protect") render(); return; }
+    if (t.hasAttribute("data-t")) { var k = t.getAttribute("data-t"); W[k] = !W[k]; saveW(); render(true); return; }
+    if (t.hasAttribute("data-c")) { var c = t.getAttribute("data-c"); W.checks[c] = !W.checks[c]; saveW(); t.setAttribute("aria-checked", W.checks[c] ? "true" : "false"); if (W.checks[c]) { t.classList.add("pop"); var fx = window.FavFIFx, r = t.getBoundingClientRect(); if (fx) { try { fx.sparkle(r.left + r.width / 2, r.top + r.height / 2); if (fx.on("sound")) fx.chime("tap"); if (fx.on("haptics")) fx.haptic(); if (tab === "protect" && CHECKS.every(function (z) { return W.checks[z[0]]; }) && fx.on("confetti")) fx.confetti(); } catch (x) {} } } t.closest(".fw-chk") && t.closest(".fw-chk").setAttribute("data-done", !!W.checks[c]); if (W.checks[c]) { try { navigator.vibrate && navigator.vibrate(8); } catch (x) {} } var nb = host.querySelector(".fw-prog i"); if (tab === "protect") render(true); return; }
     var a = t.getAttribute("data-a");
-    if (a === "eye") { if (window.FavFIPrivacy) { window.FavFIPrivacy.toggle(); render(); } }
+    if (a === "eye") { if (window.FavFIPrivacy) { window.FavFIPrivacy.toggle(); render(true); } }
     else if (a === "ask") openAsk();
     else if (a === "cpa") saveText("FavFI-CPA-summary-" + E.YEAR + ".txt", snapshot("cpa", true));
     else if (a === "sal") {
@@ -2507,6 +2533,7 @@ var FavFIEngine = (function () {
     "@media (max-height:480px) and (orientation:landscape){nav.md\\:hidden a>div{padding-top:5px!important;padding-bottom:5px!important;min-width:64px!important}nav.md\\:hidden span{display:none!important}main{padding-top:8px!important}.page-title{font-size:26px!important;line-height:1.15!important}.fv-gl{padding:16px}}" +
     "html.fv-compact .bg-card.rounded-3xl.p-6{padding:16px!important}html.fv-compact .bg-card.rounded-3xl.p-5{padding:14px!important}html.fv-compact .space-y-6>*+*{margin-top:14px!important}html.fv-compact .space-y-8>*+*{margin-top:18px!important}html.fv-compact .page-title{font-size:28px!important}html.fv-compact .fv-gl{padding:16px}html.fv-compact #fv-glance,html.fv-compact #fv-nw{margin-bottom:18px}" +
     "@media (min-width:600px) and (max-width:1023px){.fv-gl .fv-stat b{font-size:22px}}";
+  window.FavFIFx = { confetti: confetti, sparkle: sparkle, chime: chime, haptic: haptic, on: prefOn };
   applyPrefs(); setInterval(prefsUi, 400);
   setInterval(function () { try { window.FavFIData.snapshotNow(); } catch (e) {} checkCleared(); nwCard(); }, 2500);
   try { window.FavFIData.snapshotNow(); } catch (e) {}
