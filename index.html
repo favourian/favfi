@@ -1639,9 +1639,9 @@ var FavFIEngine = (function () {
     ".fw-tbl{width:100%;border-collapse:collapse;font-size:14px}.fw-tbl th{font:600 12px system-ui;text-align:right;color:hsl(var(--muted-foreground));padding:6px 0}.fw-tbl td{padding:9px 0;border-top:1px solid hsl(var(--border)/.6);text-align:right}.fw-tbl td:first-child,.fw-tbl th:first-child{text-align:left}" +
     ".fw-eye{position:absolute;right:0;top:18px;display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 14px 0 12px;border-radius:99px;border:1px solid hsl(var(--border));background:hsl(var(--card));color:hsl(var(--muted-foreground));font:500 13.5px system-ui;box-shadow:0 1px 2px rgba(70,50,20,.06),0 4px 14px rgba(70,50,20,.06);transition:transform .2s,background-color .25s,color .25s,border-color .25s}.fw-eye:active{transform:scale(.95)}.fw-eye[aria-pressed=true]{background:hsl(var(--primary)/.12);border-color:hsl(var(--primary)/.4);color:hsl(var(--primary))}.fw-eye svg{width:18px;height:18px}" +
     "#fv-wealth{position:relative}" +
-    ".fw-card{transform-style:preserve-3d;will-change:transform;position:relative;transition:transform .35s cubic-bezier(.2,.8,.2,1),box-shadow .35s}.fw-card.tl{transition:transform .08s linear,box-shadow .2s}.fw-card::after{content:\"\";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;background:radial-gradient(260px circle at var(--gx,50%) var(--gy,0%),rgba(255,255,255,.55),transparent 65%);transition:opacity .3s}.fw-card.tl::after{opacity:.5}.fw-card.tl{box-shadow:0 2px 4px rgba(70,50,20,.06),0 18px 40px rgba(70,50,20,.14)}"+
+    ".fw-card{transform-style:preserve-3d;backface-visibility:hidden;-webkit-backface-visibility:hidden;will-change:transform;position:relative;touch-action:pan-y;box-shadow:0 4px 24px rgba(70,50,20,.09),0 2px 6px rgba(70,50,20,.04)}.fw-card::after{content:\"\";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:3;opacity:.55;background:radial-gradient(circle at var(--gx,50%) var(--gy,50%),rgba(255,255,255,.32) 0%,transparent 58%);transition:opacity .4s}.fw-card.tl::after{opacity:1}.fw-card::before{content:\"\";position:absolute;top:0;left:24px;right:24px;height:1px;z-index:3;pointer-events:none;background:linear-gradient(to right,transparent,rgba(255,255,255,.9),transparent)}" +
     "@keyframes fwUp{from{opacity:0;transform:translateY(16px) scale(.985)}to{opacity:1;transform:none}}@keyframes fwGrow{from{transform:scaleX(0)}to{transform:scaleX(1)}}@keyframes fwPop{0%{transform:scale(1)}40%{transform:scale(1.28)}100%{transform:scale(1)}}"+
-    "#fv-wealth>.fw-card,#fv-wealth>.fw-tabs{animation:fwUp .55s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0)*70ms)}#fv-wealth.fw-still>*{animation:none!important}"+
+    "#fv-wealth>.fw-card,#fv-wealth>.fw-tabs{animation:fwUp .55s cubic-bezier(.2,.8,.2,1) backwards;animation-delay:calc(var(--i,0)*70ms)}#fv-wealth.fw-still>*{animation:none!important}"+
     ".fw-bar i,.fw-prog i{transform-origin:left center;animation:fwGrow .9s cubic-bezier(.2,.8,.2,1) both;animation-delay:.25s}#fv-wealth.fw-still .fw-bar i,#fv-wealth.fw-still .fw-prog i{animation:none}.fw-box.pop{animation:fwPop .4s ease}.fw-btn:active,.fw-tabs button:active{transform:scale(.96)}.fw-btn,.fw-tabs button{transition:transform .15s,background-color .2s}.fw-range:active::-webkit-slider-thumb{transform:scale(1.15)}.fw-range::-webkit-slider-thumb{transition:transform .15s}" +
     ".fw-ft{font-size:12px;line-height:1.5;color:hsl(var(--muted-foreground))}.fw-ft a{color:hsl(var(--primary))}" +
     ".fw-acts{display:flex;flex-wrap:wrap;gap:10px}.fw-btn{border:0;border-radius:14px;padding:12px 18px;min-height:46px;font:600 15px system-ui;background:hsl(var(--primary));color:hsl(var(--primary-foreground))}.fw-btn.g{background:hsl(var(--muted));color:hsl(var(--foreground))}" +
@@ -1985,19 +1985,48 @@ var FavFIEngine = (function () {
   }
   css.textContent += ".fw-range{-webkit-appearance:none;appearance:none;width:100%;height:32px;margin:0;background:transparent;--p:0%}.fw-range::-webkit-slider-runnable-track{height:8px;border-radius:99px;background:linear-gradient(to right,hsl(var(--primary)) var(--p),hsl(var(--muted)) var(--p))}.fw-range::-webkit-slider-thumb{-webkit-appearance:none;width:28px;height:28px;margin-top:-10px;border-radius:50%;background:#fff;border:3px solid hsl(var(--primary));box-shadow:0 2px 8px rgba(40,30,10,.25)}";
 
-  /* ---------- 3D tilt (matches the other tabs) ---------- */
-  var tiltEl = null;
-  function tiltOff() { if (tiltEl) { tiltEl.classList.remove("tl"); tiltEl.style.transform = ""; tiltEl = null; } }
-  document.addEventListener("pointermove", function (e) {
-    var h = document.documentElement; if (!host || h.classList.contains("fv-notilt") || h.classList.contains("fv-calm")) return;
-    var c = e.target.closest && e.target.closest("#fv-wealth .fw-card"); if (!c || (document.activeElement && c.contains(document.activeElement) && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))) { tiltOff(); return; }
-    if (tiltEl && tiltEl !== c) tiltOff();
-    tiltEl = c; var r = c.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height, max = r.width > 600 ? 2.2 : 4.5;
-    c.classList.add("tl"); c.style.setProperty("--gx", x * 100 + "%"); c.style.setProperty("--gy", y * 100 + "%");
-    c.style.transform = "perspective(1000px) rotateX(" + ((0.5 - y) * max).toFixed(2) + "deg) rotateY(" + ((x - 0.5) * max).toFixed(2) + "deg) translateZ(6px)";
+  /* ---------- 3D tilt: same physics as the app's own cards (perspective 1100px, +-7deg, spring 280/28, scale 1.018) ---------- */
+  var cards = [], raf = 0, INT = 7;
+  function st(c) { return c._t || (c._t = { rx: 0, ry: 0, s: 1, vx: 0, vy: 0, vs: 0, tx: 0, ty: 0, ts: 1, py: 0, rect: null }); }
+  function tiltAllowed() { var h = document.documentElement; return !h.classList.contains("fv-notilt") && !h.classList.contains("fv-calm"); }
+  function aim(c, cx, cy) {
+    var t = st(c); if (!t.rect) t.rect = c.getBoundingClientRect(); var r = t.rect, x = (cx - r.left) / r.width - .5, y = (cy - r.top) / r.height - .5;
+    x = Math.max(-.5, Math.min(.5, x)); y = Math.max(-.5, Math.min(.5, y));
+    var k = INT, a = document.activeElement; if (a && c.contains(a) && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) k = 2;
+    t.tx = -y * k; t.ty = x * k; t.ts = 1.018; t.py = y;
+    c.style.setProperty("--gx", (15 + (x + .5) * 70) + "%"); c.style.setProperty("--gy", (15 + (y + .5) * 70) + "%"); c.classList.add("tl");
+    if (cards.indexOf(c) < 0) cards.push(c); kick();
+  }
+  function rest(c) { var t = st(c); t.tx = 0; t.ty = 0; t.ts = 1; t.py = 0; t.rect = null; c.classList.remove("tl"); c.style.setProperty("--gx", "50%"); c.style.setProperty("--gy", "50%"); if (cards.indexOf(c) < 0) cards.push(c); kick(); }
+  function kick() { if (!raf) { last = performance.now(); raf = requestAnimationFrame(loop); } }
+  var last = 0;
+  function loop(now) {
+    var dt = Math.min(.032, (now - last) / 1000); last = now; var busy = false;
+    cards = cards.filter(function (c) {
+      var t = st(c);
+      [["rx", "vx", "tx"], ["ry", "vy", "ty"], ["s", "vs", "ts"]].forEach(function (p) { var f = -280 * (t[p[0]] - t[p[2]]) - 28 * t[p[1]]; t[p[1]] += f * dt; t[p[0]] += t[p[1]] * dt; });
+      var still = Math.abs(t.rx - t.tx) < .005 && Math.abs(t.ry - t.ty) < .005 && Math.abs(t.s - t.ts) < .0002 && Math.abs(t.vx) < .01 && Math.abs(t.vy) < .01 && Math.abs(t.vs) < .0005;
+      if (still && t.tx === 0 && t.ts === 1) { c.style.transform = ""; c.style.boxShadow = ""; return false; }
+      var lift = Math.max(0, Math.min(1, (t.s - 1) / .018)), yo = -4 + (t.py + .5) * 16 * lift + 4 * (1 - lift) * 0, blur = 24 + 16 * lift;
+      c.style.transform = "perspective(1100px) rotateX(" + t.rx.toFixed(3) + "deg) rotateY(" + t.ry.toFixed(3) + "deg) scale(" + t.s.toFixed(4) + ")";
+      c.style.boxShadow = "0 " + (4 + (yo + 4) * lift).toFixed(1) + "px " + blur.toFixed(1) + "px rgba(70,50,20," + (.09 + .05 * lift).toFixed(3) + "),0 2px 6px rgba(70,50,20,.04)";
+      busy = true; return true;
+    });
+    raf = busy ? requestAnimationFrame(loop) : 0;
+  }
+  function cardOf(e) { return e.target.closest && e.target.closest("#fv-wealth .fw-card"); }
+  var cur = null;
+  document.addEventListener("mousemove", function (e) {
+    if (!host || !tiltAllowed()) return; var c = cardOf(e);
+    if (cur && cur !== c) { rest(cur); cur = null; }
+    if (c) { cur = c; aim(c, e.clientX, e.clientY); }
   }, { passive: true });
-  document.addEventListener("pointerup", function (e) { if (e.pointerType !== "mouse") tiltOff(); }, true);
-  document.addEventListener("pointerleave", tiltOff, true); document.addEventListener("pointercancel", tiltOff, true);
+  document.addEventListener("mouseleave", function () { if (cur) { rest(cur); cur = null; } }, true);
+  document.addEventListener("touchstart", function (e) { if (!host || !tiltAllowed()) return; var c = cardOf(e), t = e.touches[0]; if (c && t) { c._t && (c._t.rect = null); cur = c; aim(c, t.clientX, t.clientY); } }, { passive: true });
+  document.addEventListener("touchmove", function (e) { var t = e.touches[0]; if (cur && t) aim(cur, t.clientX, t.clientY); }, { passive: true });
+  function touchEnd() { if (cur) { rest(cur); cur = null; } }
+  document.addEventListener("touchend", touchEnd, { passive: true }); document.addEventListener("touchcancel", touchEnd, { passive: true });
+  addEventListener("scroll", function () { if (cur) { st(cur).rect = null; } }, true);
   /* ---------- events (delegated) ---------- */
   document.addEventListener("input", function (e) {
     var t = e.target; if (!host || !host.contains(t) || !t.getAttribute) return;
