@@ -1601,7 +1601,7 @@ var FavFIEngine = (function () {
   /* ---------- CSS ---------- */
   var css = el("style");
   css.textContent =
-    "main[data-fv-w]>*:not(#fv-wealth){display:none!important}body[data-fv-w] header.space-y-1{display:none!important}" +
+    "main[data-fv-w]>*:not(#fv-wealth){display:none!important}body[data-fv-w] .fv-prev{display:none!important}" +
     "#fv-wealth{max-width:880px;margin:0 auto;padding:20px 0 40px;animation:fvIn .35s ease both}" +
     "#fv-wealth h1{font:500 38px/1.1 var(--app-font-serif);letter-spacing:-.02em;margin:6px 0 6px}" +
     "#fv-wealth .sub{color:hsl(var(--muted-foreground));font-size:16px;margin:0 0 18px;line-height:1.45}" +
@@ -1615,7 +1615,7 @@ var FavFIEngine = (function () {
     ".fw-nba small{font:600 11px system-ui;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--primary))}" +
     ".fw-nba p{margin:6px 0 0;font-size:16px;line-height:1.5}" +
     ".fw-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}" +
-    ".fw-f label{display:block;font:500 12.5px system-ui;color:hsl(var(--muted-foreground));margin:0 0 6px}" +
+    ".fw-f label{display:flex;align-items:flex-end;min-height:30px;font:500 12.5px system-ui;color:hsl(var(--muted-foreground));margin:0 0 6px}" +
     ".fw-f .in{display:flex;align-items:center;gap:6px;padding:0 12px;min-height:46px;border-radius:14px;background:hsl(var(--muted)/.5);border:1px solid transparent}" +
     ".fw-f .in:focus-within{border-color:hsl(var(--primary)/.5);background:hsl(var(--card))}" +
     ".fw-f input,.fw-f select{flex:1;min-width:0;border:0;background:transparent;font:500 16px system-ui;color:hsl(var(--foreground));outline:0;min-height:44px}" +
@@ -1667,15 +1667,16 @@ var FavFIEngine = (function () {
 
   /* ---------- page mount ---------- */
   var tab = gm().wTab || "tax", host = null, mounted = false;
+  function markPrev(main, on) { var p = main.previousElementSibling; while (p) { if (!on || p.querySelector("header") || p.tagName === "HEADER") p.classList.toggle("fv-prev", on); p = p.previousElementSibling; } }
   function mount() {
     var on = onWealth(), main = document.querySelector("main");
     if (!main) return;
     if (on && !mounted) {
-      loadW(); main.setAttribute("data-fv-w", "1"); document.body.setAttribute("data-fv-w", "1"); host = el("div"); host.id = "fv-wealth"; main.appendChild(host); mounted = true;
+      loadW(); main.setAttribute("data-fv-w", "1"); document.body.setAttribute("data-fv-w", "1"); markPrev(main, true); host = el("div"); host.id = "fv-wealth"; main.appendChild(host); mounted = true;
       main.scrollTop = 0; render();
     } else if (!on && mounted) {
-      main.removeAttribute("data-fv-w"); document.body.removeAttribute("data-fv-w"); if (host) host.remove(); host = null; mounted = false;
-    } else if (on && mounted && !host.isConnected) { main.appendChild(host); }
+      main.removeAttribute("data-fv-w"); document.body.removeAttribute("data-fv-w"); markPrev(main, false); if (host) host.remove(); host = null; mounted = false;
+    } else if (on && mounted) { if (!host.isConnected) main.appendChild(host); markPrev(main, true); }
     document.querySelectorAll("nav a[data-fv-wealth]").forEach(paintNav);
   }
   setInterval(function () { injectNav(); mount(); }, 350);
