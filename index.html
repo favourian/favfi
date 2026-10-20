@@ -1457,11 +1457,13 @@ var FavFIEngine = (function () {
   var YEAR = 2026;
   var BR = {
     single: [[12400, 0.10], [50400, 0.12], [105700, 0.22], [201775, 0.24], [256225, 0.32], [640600, 0.35], [Infinity, 0.37]],
+    hoh: [[17700, 0.10], [67450, 0.12], [105700, 0.22], [201750, 0.24], [256200, 0.32], [640600, 0.35], [Infinity, 0.37]],
     mfj: [[24800, 0.10], [100800, 0.12], [211400, 0.22], [403550, 0.24], [512450, 0.32], [768700, 0.35], [Infinity, 0.37]]
   };
-  var STD = { single: 16100, mfj: 32200 };
+  var STD = { single: 16100, hoh: 24150, mfj: 32200 };
+  function nfs(x) { return x === "mfj" ? "mfj" : x === "hoh" ? "hoh" : "single"; }
   var LIM = { k401: 24500, k401Catch: 8000, hsaSelf: 4400, hsaFamily: 8750, hsaCatch: 1000, ira: 7500, iraCatch: 1100,
-    ssBase: 184500, addlMedicare: { single: 200000, mfj: 250000 }, rothIra: { single: [153000, 168000], mfj: [242000, 252000] } };
+    ssBase: 184500, addlMedicare: { single: 200000, hoh: 200000, mfj: 250000 }, rothIra: { single: [153000, 168000], hoh: [153000, 168000], mfj: [242000, 252000] } };
 
   function bracketTax(taxable, fs) {
     var t = 0, prev = 0, br = BR[fs] || BR.single, i;
@@ -1486,7 +1488,7 @@ var FavFIEngine = (function () {
 
   /* p: {fs, salary, bonus, k401Pre, k401Roth, hsa, stateRate(0-100), extraItemized, age50} */
   function estimate(p) {
-    var fs = p.fs === "mfj" ? "mfj" : "single";
+    var fs = nfs(p.fs);
     var gross = Math.max(0, (+p.salary || 0) + (+p.bonus || 0));
     var k401 = Math.max(0, Math.min(+p.k401Pre || 0, gross));
     var hsa = Math.max(0, +p.hsa || 0);
@@ -1538,7 +1540,7 @@ var FavFIEngine = (function () {
 
   /* charitable: compare itemizing vs standard (with 2026 non-itemizer deduction), 0.5% AGI floor for itemizers */
   function giving(p, gift) {
-    var fs = p.fs === "mfj" ? "mfj" : "single", base = estimate(p), agi = base.agi;
+    var fs = nfs(p.fs), base = estimate(p), agi = base.agi;
     var nonItem = Math.min(gift, fs === "mfj" ? 2000 : 1000);
     var tStd = bracketTax(Math.max(0, agi - STD[fs] - nonItem), fs);
     var floor = 0.005 * agi, itemDed = (+p.extraItemized || 0) + Math.max(0, gift - floor);
@@ -1549,7 +1551,7 @@ var FavFIEngine = (function () {
   }
   /* bunching: give 2x every other year vs x each year (two-year total tax) */
   function bunching(p, gift) {
-    var fs = p.fs === "mfj" ? "mfj" : "single", agi = estimate(p).agi, other = +p.extraItemized || 0;
+    var fs = nfs(p.fs), agi = estimate(p).agi, other = +p.extraItemized || 0;
     function yearTax(g) {
       var nonItem = Math.min(g, fs === "mfj" ? 2000 : 1000);
       var std = bracketTax(Math.max(0, agi - STD[fs] - nonItem), fs);
@@ -1560,8 +1562,16 @@ var FavFIEngine = (function () {
     return { steady: steady, bunch: bunch, saves: steady - bunch };
   }
 
+  /* Roth IRA: allowed contribution after income phase-out (MAGI approximated by AGI) */
+  function rothIra(p) {
+    var fs = nfs(p.fs), e = estimate(p), lim = LIM.ira + (p.age50 ? LIM.iraCatch : 0), ph = LIM.rothIra[fs], magi = e.agi, allowed;
+    if (magi <= ph[0]) allowed = lim; else if (magi >= ph[1]) allowed = 0;
+    else { allowed = lim * (1 - (magi - ph[0]) / (ph[1] - ph[0])); allowed = Math.max(200, Math.ceil(allowed / 10) * 10); allowed = Math.min(allowed, lim); }
+    var cur = Math.max(0, +p.rothIra || 0);
+    return { limit: lim, allowed: allowed, cur: cur, room: Math.max(0, allowed - cur), phase: magi > ph[0] && magi < ph[1], over: magi >= ph[1], magi: magi, lo: ph[0], hi: ph[1], marginal: e.marginal };
+  }
   function fmt(n) { return (n < 0 ? "-$" : "$") + Math.round(Math.abs(n)).toLocaleString("en-US"); }
-  return { YEAR: YEAR, LIM: LIM, STD: STD, estimate: estimate, levers: levers, giving: giving, bunching: bunching, bracketTax: bracketTax, fmt: fmt };
+  return { YEAR: YEAR, LIM: LIM, STD: STD, estimate: estimate, levers: levers, giving: giving, rothIra: rothIra, bunching: bunching, bracketTax: bracketTax, fmt: fmt };
 })();
 
 
@@ -1583,7 +1593,7 @@ var FavFIEngine = (function () {
     var w = {}; try { w = window.FavFIData.getWealth() || {}; } catch (e) {}
     var d = data(), prof = d && d.profile && d.profile[0];
     W = Object.assign({ fs: "single", salary: prof ? prof.annualSalary : 0, bonus: 0, k401Pre: 0, k401Roth: 0, hsaEligible: false, hsaFamily: false, hsa: 0,
-      matchPct: 0, stateRate: 0, extraItemized: 0, age50: false, age55: false, gift: 0, checks: {} }, w);
+      matchPct: 0, rothIra: 0, lifeCover: 0, lifePremium: 0, lifeDeps: false, stateRate: 0, extraItemized: 0, age50: false, age55: false, gift: 0, checks: {} }, w);
     W.checks = W.checks || {};
   }
   function saveW() { clearTimeout(saveT); saveT = setTimeout(function () { try { window.FavFIData.setWealth(W); } catch (e) {} }, 400); }
@@ -1680,7 +1690,7 @@ var FavFIEngine = (function () {
   function tog(label, sub, key) {
     return "<div class='fw-tog'><div><b>" + label + "</b><span>" + sub + "</span></div><button type='button' class='fv-sw' role='switch' aria-checked='" + (W[key] ? "true" : "false") + "' data-t='" + key + "' aria-label='" + label + "'><i></i></button></div>";
   }
-  function pForEngine() { return Object.assign({}, W, { salary: num(W.salary), bonus: num(W.bonus), k401Pre: num(W.k401Pre), k401Roth: num(W.k401Roth), hsa: num(W.hsa), matchPct: num(W.matchPct), stateRate: num(W.stateRate), extraItemized: num(W.extraItemized) }); }
+  function pForEngine() { return Object.assign({}, W, { salary: num(W.salary), bonus: num(W.bonus), k401Pre: num(W.k401Pre), k401Roth: num(W.k401Roth), hsa: num(W.hsa), rothIra: num(W.rothIra), matchPct: num(W.matchPct), stateRate: num(W.stateRate), extraItemized: num(W.extraItemized) }); }
 
   /* ---------- Next best action ---------- */
   function nextAction() {
@@ -1690,6 +1700,7 @@ var FavFIEngine = (function () {
     var match = L.list.filter(function (x) { return x.match; })[0];
     if (match) return ["Best next step", "Raise your 401(k) contribution enough to capture your employer match. That is about <b>" + fmt(match.saves) + " a year</b> of free money."];
     if (top) return ["Best next step", top.title + ": about <b>" + fmt(top.saves) + "</b> less tax this year" + (top.add ? " for " + fmt(top.add) + " more saved." : ".")];
+    if (W.lifeDeps && !num(W.lifeCover)) return ["Best next step", "Someone relies on your income and you have no life insurance listed. Look at term life in the Protect tab."];
     var ru = runway(d); if (ru && ru.months < 3) return ["Best next step", "Build your emergency fund toward three to six months of expenses. You have about <b>" + ru.months.toFixed(1) + " months</b> now."];
     return ["You're in good shape", "Your main tax levers are in use. Keep an eye on the Calendar tab for year-end deadlines."];
   }
@@ -1697,11 +1708,11 @@ var FavFIEngine = (function () {
   /* ---------- Tax Lab ---------- */
   function taxInputs() {
     return "<div class='fw-card' id='fw-inputs'><h2>Your tax profile</h2><p class='hint'>Estimates for tax year " + E.YEAR + ". Saved on this device and included in your backups.</p>" +
-      "<div class='fw-grid'><div class='fw-f'><label for='fw-fs'>Filing status</label><div class='in'><select id='fw-fs' data-k='fs'><option value='single'" + (W.fs === "single" ? " selected" : "") + ">Single</option><option value='mfj'" + (W.fs === "mfj" ? " selected" : "") + ">Married filing jointly</option></select></div></div>" +
+      "<div class='fw-grid'><div class='fw-f'><label for='fw-fs'>Filing status</label><div class='in'><select id='fw-fs' data-k='fs'><option value='single'" + (W.fs === "single" ? " selected" : "") + ">Single</option><option value='hoh'" + (W.fs === "hoh" ? " selected" : "") + ">Head of household</option><option value='mfj'" + (W.fs === "mfj" ? " selected" : "") + ">Married filing jointly</option></select></div></div>" +
       field("Salary (per year)", "salary") + field("Bonus (per year)", "bonus") +
       field("State income tax rate", "stateRate", { prefix: false, suffix: "%" }) + "</div>" +
       "<p class='hint' style='margin:10px 0 0'>For the state rate, use your effective rate (0% if your state has no income tax, such as TX, FL, WA, NV or TN). Many states are between 3% and 6% at this income.</p>" +
-      "<h2 style='margin-top:20px'>What you save today</h2><div class='fw-grid'>" + field("Pre-tax 401(k) per year", "k401Pre") + field("Roth 401(k) per year", "k401Roth") + field("Employer match (% of pay)", "matchPct", { prefix: false, suffix: "%" }) + field("HSA per year", "hsa") + "</div>" +
+      "<h2 style='margin-top:20px'>What you save today</h2><div class='fw-grid'>" + field("Pre-tax 401(k) per year", "k401Pre") + field("Roth 401(k) per year", "k401Roth") + field("Employer match (% of pay)", "matchPct", { prefix: false, suffix: "%" }) + field("HSA per year", "hsa") + field("Roth IRA per year", "rothIra") + "</div>" +
       tog("My health plan is HSA-eligible", "A high-deductible plan that qualifies for an HSA", "hsaEligible") + (W.hsaEligible ? tog("Family coverage", "Family limit is higher than self-only", "hsaFamily") : "") +
       tog("I'm 50 or older", "Adds the 401(k) catch-up", "age50") + (W.hsaEligible ? tog("I'm 55 or older", "Adds the HSA catch-up", "age55") : "") +
       "<div class='fw-grid' style='margin-top:12px'>" + field("Other itemized deductions (optional)", "extraItemized") + "</div><p class='hint' style='margin:8px 0 0'>Only fill this in if you itemize (for example mortgage interest plus state and local taxes). Most people at this income take the standard deduction.</p>" +
@@ -1719,8 +1730,9 @@ var FavFIEngine = (function () {
         "<details><summary>Why this works</summary><p>" + l.why + " <br><br><i>" + l.note + "</i></p></details></div>";
     }).join("") || "<p class='hint'>You're already using the main levers we can see from your numbers.</p>";
     var room = e.room === Infinity ? "" : "You're in the <b>" + Math.round(e.marginal * 100) + "%</b> federal bracket with " + fmt(e.room) + " of room before the next one. Every extra $1,000 you save pre-tax lowers your federal tax by about " + fmt(1000 * e.marginal) + ".";
-    var ph = E.LIM.rothIra[e.fs], magi = e.agi, roth = magi < ph[0] ? "Your income is under the Roth IRA limit, so you can contribute up to " + fmt(E.LIM.ira) + " directly." : magi < ph[1] ? "Your income is in the Roth IRA phase-out range (" + fmt(ph[0]) + " to " + fmt(ph[1]) + "), so your allowed amount shrinks. Ask a CPA about the exact figure." : "Your income is above the Roth IRA limit. Ask a CPA about a \"backdoor\" Roth.";
-    var rothVs = e.marginal >= 0.24 ? "At a " + Math.round(e.marginal * 100) + "% bracket, pre-tax contributions usually save more today. Roth makes more sense if you expect a higher bracket later." : "At a " + Math.round(e.marginal * 100) + "% bracket, Roth contributions are often attractive because you pay tax at a lower rate now.";
+    var R = E.rothIra(p), roth = R.over ? "Your income is above the Roth IRA limit (" + fmt(R.hi) + "), so you can't contribute directly. Ask a CPA about a \"backdoor\" Roth." : R.phase ? "Your income is in the phase-out range (" + fmt(R.lo) + " to " + fmt(R.hi) + "), so your limit shrinks to about " + fmt(R.allowed) + "." : "Your income is under " + fmt(R.lo) + ", so you can contribute the full " + fmt(R.limit) + ".";
+    var rothVs = R.marginal >= 0.24 ? "At a " + Math.round(R.marginal * 100) + "% bracket, pre-tax 401(k) money usually saves more today; a Roth IRA is a good complement for tax-free growth and flexibility in retirement." : "At a " + Math.round(R.marginal * 100) + "% bracket, a Roth IRA is often attractive: you pay tax now at a lower rate and withdraw tax-free later.";
+    var rothBar = R.allowed ? "<div class='fw-prog'><i style='width:" + Math.min(100, R.cur / R.allowed * 100) + "%'></i></div><p class='hint' style='margin:4px 0 8px'>" + fmt(R.cur) + " of " + fmt(R.allowed) + " used" + (R.room ? ", " + fmt(R.room) + " left (about " + fmt(R.room / 12) + " a month)" : ", you've filled it") + ".</p>" : "";
     var maxK = E.LIM.k401 + (W.age50 ? E.LIM.k401Catch : 0), cur = num(W.k401Pre);
     return "<div class='fw-card'><h2>Your " + E.YEAR + " estimate</h2><p class='hint'>Federal, payroll and state tax on " + fmt(e.gross) + " of pay.</p>" +
       "<div class='fw-big'><div><b>" + fmt(e.total) + "</b><span>estimated total tax (" + (e.effective * 100).toFixed(1) + "% of pay)</span></div><div><b>" + fmt(e.takeHome / 12) + "</b><span>take-home per month after saving</span></div></div>" +
@@ -1728,10 +1740,10 @@ var FavFIEngine = (function () {
       "<div class='fw-card'><h2>Ways to lower your tax</h2><p class='hint'>Ranked by dollars saved. Each uses your own numbers.</p>" + rows + "</div>" +
       "<div class='fw-card'><h2>Try a 401(k) amount</h2><p class='hint'>Drag to see what a different contribution does.</p><div class='fw-big' style='margin:0 0 6px'><div><b id='fw-sv'>" + fmt(cur) + "</b><span>pre-tax 401(k) per year</span></div><div><b id='fw-ss'>" + fmt(0) + "</b><span>less tax than your current plan</span></div></div>" +
       "<input type='range' id='fw-sl' class='fw-slide' min='0' max='" + maxK + "' step='500' value='" + Math.min(cur, maxK) + "' style='--p:" + (Math.min(cur, maxK) / maxK * 100) + "%;-webkit-appearance:none;appearance:none;height:32px;background:transparent'><div class='fv-tk'><span>$0</span><span>" + fmt(maxK) + "</span></div><p class='hint' id='fw-so' style='margin:8px 0 0'></p></div>" +
-      "<div class='fw-card'><h2>Retirement accounts</h2><p class='hint'>" + roth + "</p><p class='hint' style='margin:0'>" + rothVs + "</p></div>";
+      "<div class='fw-card'><h2>Roth IRA</h2><p class='hint'>" + roth + "</p>" + rothBar + "<p class='hint' style='margin:0'>" + rothVs + " A Roth IRA doesn't lower this year's tax. You can contribute for " + E.YEAR + " until April 15 of next year. Contributions can be withdrawn anytime; earnings follow retirement rules.</p></div>";
   }
   function taxAssumptions() {
-    return "<div class='fw-card'><h2>How these numbers work</h2><p class='fw-ft'>Federal income tax uses the " + E.YEAR + " brackets for single and married-filing-jointly filers and the standard deduction (" + fmt(E.STD.single) + " single, " + fmt(E.STD.mfj) + " joint) unless you enter itemized deductions. Payroll tax uses 6.2% Social Security up to " + fmt(E.LIM.ssBase) + " of wages plus 1.45% Medicare (and 0.9% above $200,000 single or $250,000 joint). State tax is your rate applied to income after 401(k) and HSA. Not included: tax credits (such as child credits), head-of-household status, local taxes, AMT, investment income, or bonus withholding differences. These are educational estimates, not tax advice. Check figures at <a href='https://www.irs.gov' target='_blank' rel='noopener'>IRS.gov</a> and with a CPA before acting. Sources: <a href='https://www.accountingtoday.com/news/irs-ups-limits-for-401k-and-ira-contributions-in-2026' target='_blank' rel='noopener'>Accounting Today</a>, <a href='https://blog.carnegieinvest.com/tax-updates-for-2026' target='_blank' rel='noopener'>Carnegie Investment Counsel</a>, <a href='https://michaelryanmoney.com/?p=27397' target='_blank' rel='noopener'>Michael Ryan Money</a>.</p></div>";
+    return "<div class='fw-card'><h2>How these numbers work</h2><p class='fw-ft'>Federal income tax uses the " + E.YEAR + " brackets for single, head-of-household and married-filing-jointly filers and the standard deduction (" + fmt(E.STD.single) + " single, " + fmt(E.STD.hoh) + " head of household, " + fmt(E.STD.mfj) + " joint) unless you enter itemized deductions. Payroll tax uses 6.2% Social Security up to " + fmt(E.LIM.ssBase) + " of wages plus 1.45% Medicare (and 0.9% above $200,000 single or $250,000 joint). State tax is your rate applied to income after 401(k) and HSA. Not included: tax credits (such as child credits), head-of-household status, local taxes, AMT, investment income, or bonus withholding differences. These are educational estimates, not tax advice. Check figures at <a href='https://www.irs.gov' target='_blank' rel='noopener'>IRS.gov</a> and with a CPA before acting. Sources: <a href='https://www.accountingtoday.com/news/irs-ups-limits-for-401k-and-ira-contributions-in-2026' target='_blank' rel='noopener'>Accounting Today</a>, <a href='https://blog.carnegieinvest.com/tax-updates-for-2026' target='_blank' rel='noopener'>Carnegie Investment Counsel</a>, <a href='https://michaelryanmoney.com/?p=27397' target='_blank' rel='noopener'>Michael Ryan Money</a>.</p></div>";
   }
 
   /* ---------- Protect ---------- */
@@ -1754,6 +1766,23 @@ var FavFIEngine = (function () {
     var monthly = (d.expenses || []).reduce(function (s, x) { return s + (+x.amount || 0); }, 0) + (d.creditCards || []).reduce(function (s, c) { return s + (+c.minimumPayment || 0); }, 0);
     if (!monthly) return null; return { liquid: liquid, monthly: monthly, months: liquid / monthly };
   }
+  function lifeHtml() {
+    var p = pForEngine(), d = data(), inc = p.salary + p.bonus, debt = d ? (d.creditCards || []).reduce(function (s, c) { return s + (+c.balance || 0); }, 0) : 0;
+    var lo = inc * 10 + debt, hi = inc * 12 + debt, cov = num(W.lifeCover), prem = num(W.lifePremium);
+    var out = "";
+    if (!W.lifeDeps) out = "<p class='hint' style='margin:12px 0 0'>If no one relies on your income, you may not need life insurance yet. Revisit it when that changes (a partner, a child, a co-signed loan).</p>";
+    else if (!inc) out = "<p class='hint' style='margin:12px 0 0'>Add your salary in the Tax Lab to see a coverage estimate.</p>";
+    else {
+      var gap = Math.max(0, lo - cov), pctc = Math.min(100, cov / lo * 100);
+      out = "<div class='fw-big' style='margin-top:14px'><div><b>" + fmt(lo) + "</b><span>rule-of-thumb coverage (10x income + debts)</span></div><div><b>" + fmt(cov) + "</b><span>your coverage today</span></div><div><b>" + fmt(gap) + "</b><span>gap</span></div></div><div class='fw-prog'><i style='width:" + pctc + "%'></i></div>" +
+        "<p class='hint' style='margin:6px 0 0'>" + (gap > 0 ? "A common range is 10 to 12 times income plus debts (" + fmt(lo) + " to " + fmt(hi) + "). Many employers include one year of pay free; that rarely covers the whole need, and it usually ends if you leave." : "You meet the 10x rule of thumb. Recheck after big life changes.") + "</p>";
+    }
+    return "<div class='fw-card' id='fw-life'><h2>Life insurance</h2><p class='hint'>Protects the people who depend on your paycheck. Term life is usually the simplest and cheapest way to do it.</p>" +
+      tog("Someone depends on my income", "A partner, child or parent you support", "lifeDeps") +
+      "<div class='fw-grid' style='margin-top:10px'>" + field("Coverage you have (death benefit)", "lifeCover") + field("Premium per year", "lifePremium") + "</div><div id='fw-lifeout'>" + out +
+      (prem ? "<p class='hint' style='margin:8px 0 0'>Premium: " + fmt(prem / 12) + " a month" + (inc ? " (" + (prem / inc * 100).toFixed(1) + "% of pay)" : "") + ".</p>" : "") + "</div>" +
+      "<div class='fw-lev' style='border:0;padding:12px 0 0'><details><summary>Good to know</summary><p>Premiums for personal policies are generally not tax-deductible, and death benefits are generally income-tax-free to beneficiaries. Employer group coverage above $50,000 can create small taxable income. Compare term lengths to match your debts and dependents, and keep beneficiaries current. An insurance agent or fee-only planner can quote real policies; this is an estimate only.</p></details></div></div>";
+  }
   function protectHtml() {
     var ru = runway(), done = CHECKS.filter(function (c) { return W.checks[c[0]]; }).length, pct = Math.round(done / CHECKS.length * 100);
     var ef = ru ? "<div class='fw-card'><h2>Emergency fund runway</h2><div class='fw-big'><div><b>" + ru.months.toFixed(1) + "</b><span>months of expenses in savings</span></div><div><b>" + fmt(ru.liquid) + "</b><span>liquid savings</span></div><div><b>" + fmt(ru.monthly) + "</b><span>monthly expenses and minimums</span></div></div>" +
@@ -1762,7 +1791,7 @@ var FavFIEngine = (function () {
       var on = !!W.checks[c[0]];
       return "<div class='fw-chk' data-done='" + on + "'><button type='button' class='fw-box' role='checkbox' aria-checked='" + on + "' aria-label='" + esc(c[1]) + "' data-c='" + c[0] + "'><svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'><path d='M5 12l5 5L20 7'/></svg></button><div><b>" + c[1] + "</b><span>" + c[2] + "</span></div></div>";
     }).join("");
-    return ef + "<div class='fw-card'><h2>Protection checklist</h2><p class='hint'>The foundations that keep a plan from unraveling. Tick items as you finish them.</p><div class='fw-prog'><i style='width:" + pct + "%'></i></div><p class='hint' style='margin:4px 0 8px'>" + done + " of " + CHECKS.length + " done</p>" + items + "</div>";
+    return ef + lifeHtml() + "<div class='fw-card'><h2>Protection checklist</h2><p class='hint'>The foundations that keep a plan from unraveling. Tick items as you finish them.</p><div class='fw-prog'><i style='width:" + pct + "%'></i></div><p class='hint' style='margin:4px 0 8px'>" + done + " of " + CHECKS.length + " done</p>" + items + "</div>";
   }
 
   /* ---------- Give ---------- */
@@ -1812,15 +1841,16 @@ var FavFIEngine = (function () {
     var head = mode === "cpa" ? "FavFI summary for tax year " + E.YEAR + " (prepared " + new Date().toLocaleDateString() + "). Estimates for discussion, not tax advice." :
       "I track my money in an app called FavFI. Please act as my accountant and wealth advisor. Use the numbers below, tell me what you'd do and why, flag anything I should confirm with a licensed CPA or attorney, and ask me anything you need to know. Tax year " + E.YEAR + ", United States.";
     lines.push(head, "");
-    lines.push("PROFILE", "- Filing status: " + (p.fs === "mfj" ? "Married filing jointly" : "Single"), "- State income tax (effective): " + (p.stateRate || 0) + "%", "- Age 50+: " + (p.age50 ? "yes" : "no"));
+    lines.push("PROFILE", "- Filing status: " + (p.fs === "mfj" ? "Married filing jointly" : p.fs === "hoh" ? "Head of household" : "Single"), "- State income tax (effective): " + (p.stateRate || 0) + "%", "- Age 50+: " + (p.age50 ? "yes" : "no"));
     lines.push("", "INCOME", "- Salary: " + fmt(p.salary), "- Bonus: " + fmt(p.bonus));
-    lines.push("", "WHAT I SAVE TODAY", "- Pre-tax 401(k): " + fmt(p.k401Pre), "- Roth 401(k): " + fmt(p.k401Roth), "- Employer match: " + (p.matchPct ? "up to " + p.matchPct + "% of pay" : "unknown or none"), "- HSA: " + (p.hsaEligible ? "eligible, contributing " + fmt(p.hsa) : "not eligible or unknown"));
+    lines.push("", "WHAT I SAVE TODAY", "- Pre-tax 401(k): " + fmt(p.k401Pre), "- Roth 401(k): " + fmt(p.k401Roth), "- Employer match: " + (p.matchPct ? "up to " + p.matchPct + "% of pay" : "unknown or none"), "- Roth IRA: " + fmt(p.rothIra) + " so far", "- HSA: " + (p.hsaEligible ? "eligible, contributing " + fmt(p.hsa) : "not eligible or unknown"));
     lines.push("", "FAVFI ESTIMATE", "- Adjusted gross income: " + fmt(e.agi), "- Taxable income: " + fmt(e.taxable), "- Federal tax: " + fmt(e.fed), "- Social Security and Medicare: " + fmt(e.fica), "- State tax: " + fmt(e.state), "- Total tax: " + fmt(e.total) + " (" + (e.effective * 100).toFixed(1) + "% effective, " + Math.round(e.marginal * 100) + "% federal bracket)");
     if (L.list.length) { lines.push("", "LEVERS FAVFI SEES"); L.list.forEach(function (l) { lines.push("- " + l.title + ": save " + fmt(l.add) + " more, about " + fmt(l.saves) + " less tax" + (l.match ? " (employer match)" : "")); }); }
     lines.push("", "ASSETS"); assets.forEach(function (a, i) { lines.push("- " + (names ? a.name + " (" + a.type + ")" : "Asset " + (i + 1) + " (" + a.type + ")") + ": " + fmt(a.value)); });
     lines.push("", "DEBTS"); cards.forEach(function (c, i) { lines.push("- " + (names ? c.name : "Debt " + (i + 1)) + ": " + fmt(c.balance) + " at " + c.apr + "% APR, minimum " + fmt(c.minimumPayment) + "/mo"); });
     lines.push("", "MONTHLY", "- Tracked expenses: " + fmt(ex.reduce(function (s, x) { return s + (+x.amount || 0); }, 0)), "- Savings goal: " + fmt(prof.savingsGoalMonthly || 0) + "/mo toward " + fmt(prof.savingsGoalTarget || 0), ru ? "- Emergency fund: about " + ru.months.toFixed(1) + " months of expenses in liquid savings" : "");
     var done = CHECKS.filter(function (c) { return W.checks[c[0]]; }).map(function (c) { return c[1]; }), open = CHECKS.filter(function (c) { return !W.checks[c[0]]; }).map(function (c) { return c[1]; });
+    lines.push("", "LIFE INSURANCE", "- Dependents rely on my income: " + (W.lifeDeps ? "yes" : "no"), "- Coverage: " + fmt(num(W.lifeCover)) + ", premium " + fmt(num(W.lifePremium)) + "/yr");
     lines.push("", "PROTECTION CHECKLIST", "- Done: " + (done.join("; ") || "none"), "- Open: " + (open.join("; ") || "none"));
     if (num(W.gift) > 0) lines.push("", "GIVING", "- Planned cash giving: " + fmt(num(W.gift)) + "/yr; considering a donor-advised fund vs a family foundation");
     if (mode !== "cpa") lines.push("", "WHAT I'D LIKE HELP WITH", "1. Am I using the right tax levers, and in what order?", "2. Roth vs pre-tax for my situation?", "3. Is a family foundation worth it for me, or is a donor-advised fund better?", "4. What should I do before year-end?");
@@ -1889,7 +1919,7 @@ var FavFIEngine = (function () {
     var t = e.target; if (!host || !host.contains(t) || !t.getAttribute) return;
     var k = t.getAttribute("data-k"); if (!k) return;
     if (t.tagName === "SELECT") W[k] = t.value; else W[k] = (k === "stateRate" || k === "matchPct") ? num(t.value) : t.value === "" ? 0 : num(t.value);
-    saveW(); if (tab === "tax") refreshResults(); else if (tab === "give") renderGiveOnly();
+    saveW(); if (tab === "tax") refreshResults(); else if (tab === "give") renderGiveOnly(); else if (tab === "protect") { var lc = host.querySelector("#fw-life"); if (lc) { var tmp = el("div", null, lifeHtml()); lc.querySelector("#fw-lifeout").innerHTML = tmp.querySelector("#fw-lifeout").innerHTML; } }
   });
   function renderGiveOnly() {
     var r = host.querySelector("#fw-gres"); if (!r) return;
