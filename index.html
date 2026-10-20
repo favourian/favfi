@@ -1140,6 +1140,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     else if (hiddenAt && Date.now() - hiddenAt > 60000) { showLock(); }
   });
   window.addEventListener("pageshow", function (e) { if (e.persisted) showLock(); });
+  window.addEventListener("favfi:lock", function () { if (lockEnabled() && !lockShown()) showLock(); });
   if (lockEnabled()) { if (document.body) showLock(); else document.addEventListener("DOMContentLoaded", showLock); }
 
   function openPanel() {
@@ -1593,7 +1594,7 @@ var FavFIEngine = (function () {
     var w = {}; try { w = window.FavFIData.getWealth() || {}; } catch (e) {}
     var d = data(), prof = d && d.profile && d.profile[0];
     W = Object.assign({ fs: "single", salary: prof ? prof.annualSalary : 0, bonus: 0, k401Pre: 0, k401Roth: 0, hsaEligible: false, hsaFamily: false, hsa: 0,
-      matchPct: 0, rothIra: 0, contract: false, convDate: "", lifeCover: 0, lifePremium: 0, lifeDeps: false, stateRate: 0, extraItemized: 0, age50: false, age55: false, gift: 0, checks: {} }, w);
+      matchPct: 0, rothIra: 0, contract: false, ftSalary: 0, ftBonus: 0, ftK401Pct: 0, ftMatchPct: 0, ftHsa: 0, ctHealth: 0, ftHealth: 0, raiseTo: 0, convDate: "", lifeCover: 0, lifePremium: 0, lifeDeps: false, stateRate: 0, extraItemized: 0, age50: false, age55: false, gift: 0, checks: {} }, w);
     W.checks = W.checks || {};
   }
   function saveW() { clearTimeout(saveT); saveT = setTimeout(function () { try { window.FavFIData.setWealth(W); } catch (e) {} }, 400); }
@@ -1635,6 +1636,8 @@ var FavFIEngine = (function () {
     ".fw-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}.fw-col{padding:16px;border-radius:18px;background:hsl(var(--muted)/.45);border:1px solid transparent}.fw-col.rec{border-color:hsl(var(--primary)/.45);background:hsl(var(--primary)/.08)}" +
     ".fw-col h3{font:500 17px var(--app-font-serif);margin:0 0 8px}.fw-col ul{margin:0;padding:0;list-style:none;font-size:13px;line-height:1.5;color:hsl(var(--muted-foreground))}.fw-col li{padding:4px 0}.fw-col li b{color:hsl(var(--foreground));font-weight:500}.fw-tag{display:inline-block;font:600 10.5px system-ui;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:99px;background:hsl(var(--primary));color:hsl(var(--primary-foreground));margin-bottom:8px}" +
     ".fw-cal{display:flex;gap:14px;align-items:flex-start;padding:13px 0;border-top:1px solid hsl(var(--border)/.6)}.fw-cal:first-of-type{border-top:0}.fw-date{flex:none;width:58px;text-align:center;padding:6px 0;border-radius:12px;background:hsl(var(--muted)/.6)}.fw-date b{display:block;font:500 20px var(--app-font-serif);line-height:1}.fw-date span{font:600 10px system-ui;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--muted-foreground))}" +
+    ".fw-tbl{width:100%;border-collapse:collapse;font-size:14px}.fw-tbl th{font:600 12px system-ui;text-align:right;color:hsl(var(--muted-foreground));padding:6px 0}.fw-tbl td{padding:9px 0;border-top:1px solid hsl(var(--border)/.6);text-align:right}.fw-tbl td:first-child,.fw-tbl th:first-child{text-align:left}" +
+    ".fw-eye{position:absolute;right:0;top:20px;width:44px;height:44px;border-radius:50%;border:0;background:hsl(var(--muted));color:hsl(var(--muted-foreground))}#fv-wealth{position:relative}" +
     ".fw-ft{font-size:12px;line-height:1.5;color:hsl(var(--muted-foreground))}.fw-ft a{color:hsl(var(--primary))}" +
     ".fw-acts{display:flex;flex-wrap:wrap;gap:10px}.fw-btn{border:0;border-radius:14px;padding:12px 18px;min-height:46px;font:600 15px system-ui;background:hsl(var(--primary));color:hsl(var(--primary-foreground))}.fw-btn.g{background:hsl(var(--muted));color:hsl(var(--foreground))}" +
     ".fw-slide{width:100%}.fw-pill{display:inline-block;padding:3px 10px;border-radius:99px;background:hsl(var(--muted));font:500 12.5px system-ui;color:hsl(var(--muted-foreground))}" +
@@ -1709,6 +1712,12 @@ var FavFIEngine = (function () {
   }
 
   /* ---------- Tax Lab ---------- */
+  function compareInputs() {
+    if (!W.contract) return "";
+    return "<h2 style='margin-top:20px'>Compare your full-time offer</h2><p class='hint'>Fill in what you know. The comparison below updates as you type.</p><div class='fw-grid'>" +
+      field("Full-time salary", "ftSalary") + field("Full-time bonus (yearly)", "ftBonus") + field("Your 401(k) (% of salary)", "ftK401Pct", { prefix: false, suffix: "%" }) + field("Employer match (% of salary)", "ftMatchPct", { prefix: false, suffix: "%" }) +
+      field("HSA you'd contribute (yearly)", "ftHsa") + field("Health cost now (monthly)", "ctHealth") + field("Health cost at new job (monthly)", "ftHealth") + "</div>";
+  }
   function taxInputs() {
     return "<div class='fw-card' id='fw-inputs'><h2>Your tax profile</h2><p class='hint'>Estimates for tax year " + E.YEAR + ". Saved on this device and included in your backups.</p>" +
       "<div class='fw-grid'><div class='fw-f'><label for='fw-fs'>Filing status</label><div class='in'><select id='fw-fs' data-k='fs'><option value='single'" + (W.fs === "single" ? " selected" : "") + ">Single</option><option value='hoh'" + (W.fs === "hoh" ? " selected" : "") + ">Head of household</option><option value='mfj'" + (W.fs === "mfj" ? " selected" : "") + ">Married filing jointly</option></select></div></div>" +
@@ -1719,7 +1728,7 @@ var FavFIEngine = (function () {
       tog("I'm a contractor now, converting to full-time", "Hides 401(k), match and HSA tips until you have an employer plan", "contract") + (W.contract ? "<div class='fw-grid' style='margin:10px 0'><div class='fw-f'><label for='fw-conv'>Expected full-time start date</label><div class='in'><input id='fw-conv' type='date' data-k='convDate' value='" + esc(W.convDate || "") + "'></div></div></div>" : "") + tog("My health plan is HSA-eligible", "A high-deductible plan that qualifies for an HSA", "hsaEligible") + (W.hsaEligible ? tog("Family coverage", "Family limit is higher than self-only", "hsaFamily") : "") +
       tog("I'm 50 or older", "Adds the 401(k) catch-up", "age50") + (W.hsaEligible ? tog("I'm 55 or older", "Adds the HSA catch-up", "age55") : "") +
       "<div class='fw-grid' style='margin-top:12px'>" + field("Other itemized deductions (optional)", "extraItemized") + "</div><p class='hint' style='margin:8px 0 0'>Only fill this in if you itemize (for example mortgage interest plus state and local taxes). Most people at this income take the standard deduction.</p>" +
-      "<div id='fw-salnote'></div></div>";
+      "<h2 style='margin-top:20px'>If your pay changes</h2><p class='hint'>Optional. See what you would actually keep from a raise or new job.</p><div class='fw-grid'>" + field("New yearly salary", "raiseTo") + "</div>" + compareInputs() + "<div id='fw-salnote'></div></div>";
   }
   function convHtml() {
     if (!W.contract) return "";
@@ -1732,6 +1741,37 @@ var FavFIEngine = (function () {
       (next ? "<p class='hint'>That means no employer 401(k) or HSA is available for the rest of " + E.YEAR + ", so the estimate above leaves them out. Your main option for " + E.YEAR + " is a Roth or traditional IRA (you have until April 15 to fund it). Also ask your staffing agency or current employer whether they offer a 401(k) or HSA-eligible plan to contractors; many do.</p>" : "") +
       (top ? "<p class='hint'><b>Once you're on the plan:</b> maxing your 401(k) at today's pay would cut your yearly tax by about " + fmt(top.saves) + (L.list.length > 1 ? ", and the full set of tips by about " + fmt(L.list.reduce(function (s, x) { return s + (x.match ? 0 : x.saves); }, 0)) : "") + ". Limits for the new year are usually announced in the fall, so these use " + E.YEAR + " numbers.</p>" : "") +
       "<p class='hint'>Since you're paid on a W-2, your employer already withholds payroll tax, so no self-employment tax applies. Check that your withholding still fits once your pay or benefits change.</p>" + step + "</div>";
+  }
+  function compareHtml() {
+    if (!W.contract) return "";
+    var base = pForEngine(true), sal = num(W.ftSalary);
+    if (!sal) return "<div class='fw-card'><h2>Contract vs full-time</h2><p class='hint'>Enter your full-time salary above to compare what you'd keep.</p></div>";
+    var now = E.estimate(Object.assign({}, base, { k401Pre: 0, k401Roth: 0, hsa: 0 }));
+    var k = Math.min(sal, sal * num(W.ftK401Pct) / 100), match = Math.min(k, sal * num(W.ftMatchPct) / 100), hsa = num(W.ftHsa);
+    var ft = E.estimate(Object.assign({}, base, { salary: sal, bonus: num(W.ftBonus), k401Pre: k, k401Roth: 0, hsa: hsa, hsaEligible: hsa > 0 }));
+    var cNow = num(W.ctHealth) * 12, cFt = num(W.ftHealth) * 12;
+    var thNow = now.takeHome - cNow, thFt = ft.takeHome - cFt, valNow = thNow, valFt = thFt + k + hsa + match;
+    var diff = valFt - valNow, thDiff = (thFt - thNow) / 12;
+    function row(l, a, b, bold) { return "<tr><td>" + l + "</td><td>" + a + "</td><td>" + b + "</td></tr>"; }
+    var tbl = "<table class='fw-tbl'><thead><tr><th></th><th>Contract now</th><th>Full-time</th></tr></thead><tbody>" +
+      row("Pay", fmt(now.gross), fmt(ft.gross)) + row("Estimated tax", fmt(now.total), fmt(ft.total)) + row("Health costs", fmt(cNow), fmt(cFt)) +
+      row("You save (401k + HSA)", fmt(0), fmt(k + hsa)) + row("Employer match", fmt(0), fmt(match)) +
+      row("<b>Take-home per month</b>", "<b>" + fmt(thNow / 12) + "</b>", "<b>" + fmt(thFt / 12) + "</b>") + "</tbody></table>";
+    return "<div class='fw-card'><h2>Contract vs full-time</h2><p class='hint'>Using " + E.YEAR + " tax rules for both.</p><div class='fw-big'><div><b>" + (diff >= 0 ? "+" : "-") + fmt(Math.abs(diff)).replace("-", "") + "</b><span>a year in total value, counting savings and match</span></div><div><b>" + (thDiff >= 0 ? "+" : "-") + fmt(Math.abs(thDiff)).replace("-", "") + "</b><span>take-home per month</span></div></div>" + tbl +
+      "<p class='hint' style='margin:12px 0 0'>" + (thDiff < 0 && diff > 0 ? "Your paycheck may look smaller because part of the pay is going into your own retirement and health accounts, not because you earn less. " : "") + "Total value adds your 401(k) and HSA savings and your employer match to take-home pay. Benefits like paid time off, bonuses and stock aren't counted.</p></div>";
+  }
+  function raiseHtml() {
+    var cur = num(W.salary), to = num(W.raiseTo); if (!to || !cur || to === cur) return "";
+    var a = E.estimate(pForEngine()), b = E.estimate(Object.assign({}, pForEngine(), { salary: to })), dG = (to - cur), dT = (b.takeHome - a.takeHome), keep = dG ? dT / dG : 0, mo = dT / 12;
+    var d = data() || {}, debts = (d.creditCards || []).filter(function (c) { return +c.balance > 0; }).sort(function (x, y) { return (+y.apr || 0) - (+x.apr || 0); });
+    var ru = runway(d), low = ru && ru.months < 3, plan;
+    if (mo <= 0) plan = [];
+    else if (debts.length) plan = [["Pay down " + debts[0].name, .4, "#c9735b"], ["Retirement", .3, "hsl(152 30% 36%)"], [low ? "Emergency fund" : "Savings goals", .15, "#8aa7c4"], ["Enjoy it", .15, "#d9a441"]];
+    else plan = [["Retirement", .5, "hsl(152 30% 36%)"], [low ? "Emergency fund" : "Savings goals", .25, "#8aa7c4"], ["Giving or goals", .1, "#b48ac4"], ["Enjoy it", .15, "#d9a441"]];
+    var bar = plan.map(function (x) { return "<i style='width:" + x[1] * 100 + "%;background:" + x[2] + "'></i>"; }).join(""), leg = plan.map(function (x) { return "<span><i style='background:" + x[2] + "'></i>" + x[0] + " " + fmt(mo * x[1]) + "/mo</span>"; }).join("");
+    return "<div class='fw-card'><h2>If your pay becomes " + fmt(to) + "</h2><div class='fw-big'><div><b>" + (dT >= 0 ? "+" : "-") + fmt(Math.abs(mo)).replace("-", "") + "</b><span>more take-home per month</span></div><div><b>" + Math.round(keep * 100) + "¢</b><span>kept from each extra dollar</span></div></div>" +
+      "<p class='hint'>" + fmt(Math.abs(dG)) + " more pay becomes about " + fmt(Math.abs(dT)) + " after tax. Your federal bracket goes from " + Math.round(a.marginal * 100) + "% to " + Math.round(b.marginal * 100) + "%.</p>" +
+      (plan.length ? "<div class='fw-bar'>" + bar + "</div><div class='fw-leg'>" + leg + "</div><p class='hint' style='margin:12px 0 0'>A simple starting split for the extra money. Increasing your pre-tax 401(k) first stretches it further, because it lowers your tax too.</p>" : "") + "</div>";
   }
   function taxResults() {
     var p = pForEngine(); if (!p.salary) return "<div class='fw-card'><h2>Your 2026 estimate</h2><p class='hint'>Add your salary above to see your estimate.</p></div>";
@@ -1749,13 +1789,13 @@ var FavFIEngine = (function () {
     var rothVs = R.marginal >= 0.24 ? "At a " + Math.round(R.marginal * 100) + "% bracket, pre-tax 401(k) money usually saves more today; a Roth IRA is a good complement for tax-free growth and flexibility in retirement." : "At a " + Math.round(R.marginal * 100) + "% bracket, a Roth IRA is often attractive: you pay tax now at a lower rate and withdraw tax-free later.";
     var rothBar = R.allowed ? "<div class='fw-prog'><i style='width:" + Math.min(100, R.cur / R.allowed * 100) + "%'></i></div><p class='hint' style='margin:4px 0 8px'>" + fmt(R.cur) + " of " + fmt(R.allowed) + " used" + (R.room ? ", " + fmt(R.room) + " left (about " + fmt(R.room / 12) + " a month)" : ", you've filled it") + ".</p>" : "";
     var maxK = E.LIM.k401 + (W.age50 ? E.LIM.k401Catch : 0), cur = num(W.k401Pre);
-    return convHtml() + "<div class='fw-card'><h2>Your " + E.YEAR + " estimate</h2><p class='hint'>Federal, payroll and state tax on " + fmt(e.gross) + " of pay.</p>" +
+    return convHtml() + compareHtml() + "<div class='fw-card'><h2>Your " + E.YEAR + " estimate</h2><p class='hint'>Federal, payroll and state tax on " + fmt(e.gross) + " of pay.</p>" +
       "<div class='fw-big'><div><b>" + fmt(e.total) + "</b><span>estimated total tax (" + (e.effective * 100).toFixed(1) + "% of pay)</span></div><div><b>" + fmt(e.takeHome / 12) + "</b><span>take-home per month after saving</span></div></div>" +
       "<div class='fw-bar'>" + bar + "</div><div class='fw-leg'>" + leg + "</div><p class='hint' style='margin:14px 0 0'>" + room + "</p></div>" +
       "<div class='fw-card'><h2>Ways to lower your tax</h2><p class='hint'>Ranked by dollars saved. Each uses your own numbers.</p>" + rows + "</div>" +
       "<div class='fw-card'><h2>Try a 401(k) amount</h2><p class='hint'>Drag to see what a different contribution does.</p><div class='fw-big' style='margin:0 0 6px'><div><b id='fw-sv'>" + fmt(cur) + "</b><span>pre-tax 401(k) per year</span></div><div><b id='fw-ss'>" + fmt(0) + "</b><span>less tax than your current plan</span></div></div>" +
       "<input type='range' id='fw-sl' class='fw-slide' min='0' max='" + maxK + "' step='500' value='" + Math.min(cur, maxK) + "' style='--p:" + (Math.min(cur, maxK) / maxK * 100) + "%;-webkit-appearance:none;appearance:none;height:32px;background:transparent'><div class='fv-tk'><span>$0</span><span>" + fmt(maxK) + "</span></div><p class='hint' id='fw-so' style='margin:8px 0 0'></p></div>" +
-      "<div class='fw-card'><h2>Roth IRA</h2><p class='hint'>" + roth + "</p>" + rothBar + "<p class='hint' style='margin:0'>" + rothVs + " A Roth IRA doesn't lower this year's tax. You can contribute for " + E.YEAR + " until April 15 of next year. Contributions can be withdrawn anytime; earnings follow retirement rules.</p></div>";
+      raiseHtml() + "<div class='fw-card'><h2>Roth IRA</h2><p class='hint'>" + roth + "</p>" + rothBar + "<p class='hint' style='margin:0'>" + rothVs + " A Roth IRA doesn't lower this year's tax. You can contribute for " + E.YEAR + " until April 15 of next year. Contributions can be withdrawn anytime; earnings follow retirement rules.</p></div>";
   }
   function taxAssumptions() {
     return "<div class='fw-card'><h2>How these numbers work</h2><p class='fw-ft'>Federal income tax uses the " + E.YEAR + " brackets for single, head-of-household and married-filing-jointly filers and the standard deduction (" + fmt(E.STD.single) + " single, " + fmt(E.STD.hoh) + " head of household, " + fmt(E.STD.mfj) + " joint) unless you enter itemized deductions. Payroll tax uses 6.2% Social Security up to " + fmt(E.LIM.ssBase) + " of wages plus 1.45% Medicare (and 0.9% above $200,000 single or $250,000 joint). State tax is your rate applied to income after 401(k) and HSA. Not included: tax credits (such as child credits), head-of-household status, local taxes, AMT, investment income, or bonus withholding differences. These are educational estimates, not tax advice. Check figures at <a href='https://www.irs.gov' target='_blank' rel='noopener'>IRS.gov</a> and with a CPA before acting. Sources: <a href='https://www.accountingtoday.com/news/irs-ups-limits-for-401k-and-ira-contributions-in-2026' target='_blank' rel='noopener'>Accounting Today</a>, <a href='https://blog.carnegieinvest.com/tax-updates-for-2026' target='_blank' rel='noopener'>Carnegie Investment Counsel</a>, <a href='https://michaelryanmoney.com/?p=27397' target='_blank' rel='noopener'>Michael Ryan Money</a>.</p></div>";
@@ -1899,13 +1939,16 @@ var FavFIEngine = (function () {
     return "<div class='fw-card'><h2>Take it further</h2><p class='hint'>Get a second opinion from Claude, or hand your numbers to a professional.</p><div class='fw-acts'><button class='fw-btn' data-a='ask'>Ask Claude</button><button class='fw-btn g' data-a='cpa'>Save a CPA summary</button></div></div>";
   }
 
+  var EYE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  var EYE_OFF = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.9 17.9A10.6 10.6 0 0 1 12 19c-6.5 0-10-7-10-7a18 18 0 0 1 4.1-5M9.9 5.2A9.7 9.7 0 0 1 12 5c6.5 0 10 7 10 7a18 18 0 0 1-2.2 3.2M1 1l22 22"/></svg>';
   /* ---------- render ---------- */
   function render() {
     if (!host) return;
     var nba = nextAction();
     var tabs = [["tax", "Tax Lab"], ["protect", "Protect"], ["give", "Give"], ["cal", "Calendar"]];
     var body = tab === "tax" ? taxInputs() + "<div id='fw-res'>" + taxResults() + "</div>" + taxAssumptions() : tab === "protect" ? protectHtml() : tab === "give" ? giveHtml() : calendarHtml();
-    host.innerHTML = "<h1>Wealth</h1><p class='sub'>Your tax plan and the foundations that protect it. Private, on this device.</p>" +
+    var hid = window.FavFIPrivacy && window.FavFIPrivacy.isHidden();
+    host.innerHTML = "<button type='button' class='fw-eye' data-a='eye' aria-label='" + (hid ? "Show amounts" : "Hide amounts") + "' title='" + (hid ? "Show amounts" : "Hide amounts") + "'>" + (hid ? EYE_OFF : EYE) + "</button><h1>Wealth</h1><p class='sub'>Your tax plan and the foundations that protect it. Private, on this device.</p>" +
       "<div class='fw-card fw-nba'><small>" + nba[0] + "</small><p>" + nba[1] + "</p></div>" +
       "<div class='fw-tabs' role='tablist'>" + tabs.map(function (t) { return "<button role='tab' aria-selected='" + (tab === t[0]) + "' data-tab='" + t[0] + "'>" + t[1] + "</button>"; }).join("") + "</div>" + body + takeItFurther() +
       "<p class='fw-ft' style='padding:0 6px'>FavFI gives educational estimates, not tax, legal or investment advice. Rules change and your situation is unique; confirm important decisions with a qualified CPA or attorney.</p>";
@@ -1947,7 +1990,8 @@ var FavFIEngine = (function () {
     if (t.hasAttribute("data-t")) { var k = t.getAttribute("data-t"); W[k] = !W[k]; saveW(); render(); return; }
     if (t.hasAttribute("data-c")) { var c = t.getAttribute("data-c"); W.checks[c] = !W.checks[c]; saveW(); t.setAttribute("aria-checked", W.checks[c] ? "true" : "false"); t.closest(".fw-chk") && t.closest(".fw-chk").setAttribute("data-done", !!W.checks[c]); if (W.checks[c]) { try { navigator.vibrate && navigator.vibrate(8); } catch (x) {} } var nb = host.querySelector(".fw-prog i"); if (tab === "protect") render(); return; }
     var a = t.getAttribute("data-a");
-    if (a === "ask") openAsk();
+    if (a === "eye") { if (window.FavFIPrivacy) { window.FavFIPrivacy.toggle(); render(); } }
+    else if (a === "ask") openAsk();
     else if (a === "cpa") saveText("FavFI-CPA-summary-" + E.YEAR + ".txt", snapshot("cpa", true));
     else if (a === "sal") {
       var d = data(), prof = d.profile[0]; var body = { displayName: prof.displayName, annualSalary: num(W.salary), monthlyAdditionalIncome: prof.monthlyAdditionalIncome || 0, savingsGoalMonthly: prof.savingsGoalMonthly || 0, savingsGoalTarget: prof.savingsGoalTarget || 0, payoffAggressiveness: prof.payoffAggressiveness || "moderate" };
@@ -2389,6 +2433,9 @@ var FavFIEngine = (function () {
     ["Dashboard", [
       ["recapCard", "Monthly recap", "A short summary card once a month", true],
       ["dueSoon", "Due-soon list", "Show bills due in the next 7 days on the dashboard", true]]],
+    ["Privacy", [
+      ["hideAmts", "Hide amounts", "Blurs dollar amounts on screen. Tap one to peek for a moment", false],
+      ["autoLock", "Auto-lock when idle", "Locks after 5 minutes of no use. Needs an app lock PIN", false]]],
     ["Safety", [
       ["backupNudges", "Backup reminders", "Remind me to save a backup monthly and after many changes", true]]]
   ];
@@ -2403,7 +2450,23 @@ var FavFIEngine = (function () {
     h.classList.toggle("fv-notilt", !prefOn("tilt"));
     h.classList.toggle("fv-calm", prefOn("calm"));
     h.classList.toggle("fv-compact", prefOn("compact"));
+    h.classList.toggle("fv-hide", prefOn("hideAmts")); scanAmts();
   }
+  function scanAmts() {
+    var on = prefOn("hideAmts");
+    if (!on) { [].forEach.call(document.querySelectorAll(".fv-amt"), function (n) { n.classList.remove("fv-amt"); }); return; }
+    var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, { acceptNode: function (n) { return /\$\s?[\d]/.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT; } }), n;
+    while ((n = w.nextNode())) { var p = n.parentElement; if (p && !p.closest("#favfi-lock,script,style,textarea") && !p.classList.contains("fv-amt")) p.classList.add("fv-amt"); }
+  }
+  window.FavFIPrivacy = { isHidden: function () { return prefOn("hideAmts"); }, toggle: function () { var o = { hideAmts: !prefOn("hideAmts") }; sm(o); applyPrefs(); try { window.dispatchEvent(new Event("favfi:privacy")); } catch (e) {} return prefOn("hideAmts"); } };
+  document.addEventListener("click", function (e) {
+    var t = e.target.closest && e.target.closest(".fv-amt"); if (!t || !prefOn("hideAmts")) return;
+    t.classList.add("fv-peek"); clearTimeout(t._pk); t._pk = setTimeout(function () { t.classList.remove("fv-peek"); }, 3000);
+  }, true);
+  var lastAct = Date.now();
+  ["pointerdown", "keydown", "touchstart", "scroll"].forEach(function (ev) { addEventListener(ev, function () { lastAct = Date.now(); }, { passive: true, capture: true }); });
+  setInterval(function () { if (prefOn("autoLock") && !document.hidden && Date.now() - lastAct > 300000) { lastAct = Date.now(); window.dispatchEvent(new Event("favfi:lock")); } }, 15000);
+  setInterval(function () { if (prefOn("hideAmts")) scanAmts(); }, 700);
   function prefsUi() {
     var p = [].slice.call(document.querySelectorAll("p")).filter(function (n) { return /Choose what you.d like to hear about/.test(n.textContent); })[0];
     if (!p) return;
@@ -2430,7 +2493,8 @@ var FavFIEngine = (function () {
     });
     box.appendChild(wrap);
   }
-  css.textContent += "[data-radix-popper-content-wrapper] [role=dialog]{background:hsl(var(--popover))!important;backdrop-filter:none!important;max-height:var(--radix-popover-content-available-height,80vh);overflow-y:auto;overscroll-behavior:contain}" +
+  css.textContent += "html.fv-hide .fv-amt:not(.fv-peek),html.fv-hide input[inputmode=decimal]{filter:blur(7px);user-select:none}.fv-amt{transition:filter .25s}" +
+    "[data-radix-popper-content-wrapper] [role=dialog]{background:hsl(var(--popover))!important;backdrop-filter:none!important;max-height:var(--radix-popover-content-available-height,80vh);overflow-y:auto;overscroll-behavior:contain}" +
     ".fv-one{display:flex;align-items:center;gap:14px;padding:6px 0}.fv-one i{width:14px;height:14px;border-radius:50%;background:hsl(152 30% 36%);box-shadow:0 0 0 6px hsl(152 30% 36%/.16)}.fv-one b{display:block;font:500 24px var(--app-font-serif)}.fv-one span{font-size:13px;color:hsl(var(--muted-foreground))}" +
     "#fv-prefs{margin-top:6px}.fv-ps{margin-top:14px}.fv-ps h4{font:600 11px system-ui!important;letter-spacing:.08em!important;text-transform:uppercase;color:hsl(var(--muted-foreground));margin:0 0 2px}" +
     ".fv-pr{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid hsl(var(--border)/.5)}.fv-ps .fv-pr:last-child{border-bottom:0}" +
