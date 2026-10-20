@@ -1593,7 +1593,7 @@ var FavFIEngine = (function () {
     var w = {}; try { w = window.FavFIData.getWealth() || {}; } catch (e) {}
     var d = data(), prof = d && d.profile && d.profile[0];
     W = Object.assign({ fs: "single", salary: prof ? prof.annualSalary : 0, bonus: 0, k401Pre: 0, k401Roth: 0, hsaEligible: false, hsaFamily: false, hsa: 0,
-      matchPct: 0, rothIra: 0, lifeCover: 0, lifePremium: 0, lifeDeps: false, stateRate: 0, extraItemized: 0, age50: false, age55: false, gift: 0, checks: {} }, w);
+      matchPct: 0, rothIra: 0, contract: false, convDate: "", lifeCover: 0, lifePremium: 0, lifeDeps: false, stateRate: 0, extraItemized: 0, age50: false, age55: false, gift: 0, checks: {} }, w);
     W.checks = W.checks || {};
   }
   function saveW() { clearTimeout(saveT); saveT = setTimeout(function () { try { window.FavFIData.setWealth(W); } catch (e) {} }, 400); }
@@ -1648,13 +1648,14 @@ var FavFIEngine = (function () {
   function injectNav() {
     var links = document.querySelectorAll('nav a[href="/shared"]');
     links.forEach(function (a) {
-      if (a.parentNode.querySelector("a[data-fv-wealth]")) { paintNav(a.parentNode.querySelector("a[data-fv-wealth]")); return; }
+      var ex = a.parentNode.querySelector("a[data-fv-wealth]");
+      if (ex) { if (ex.nextElementSibling !== a) a.insertAdjacentElement("beforebegin", ex); paintNav(ex); return; }
       var c = a.cloneNode(true); c.setAttribute("href", "#/wealth"); c.setAttribute("data-fv-wealth", "1");
       var svg = c.querySelector("svg"); if (svg) { var tmp = el("div", null, ICON).firstChild; svg.replaceWith(tmp); }
       var spans = c.querySelectorAll("span"); spans.forEach(function (s) { if (/Household|Family/.test(s.textContent)) s.textContent = /Family/.test(s.textContent) ? "Wealth" : "Wealth"; });
       c.querySelectorAll("[style]").forEach(function (n) { var st = (n.getAttribute("style") || "").replace(/opacity:[^;]*;?|transform:[^;]*;?/g, "").trim(); n.setAttribute("style", st); n.setAttribute("data-fv-orig", st); n.style.opacity = "1"; n.style.transform = "none"; });
       var tip = c.getAttribute("data-state"); if (tip) c.removeAttribute("data-state");
-      a.insertAdjacentElement("afterend", c); paintNav(c);
+      a.insertAdjacentElement("beforebegin", c); paintNav(c);
     });
   }
   function paintNav(c) {
@@ -1690,7 +1691,8 @@ var FavFIEngine = (function () {
   function tog(label, sub, key) {
     return "<div class='fw-tog'><div><b>" + label + "</b><span>" + sub + "</span></div><button type='button' class='fv-sw' role='switch' aria-checked='" + (W[key] ? "true" : "false") + "' data-t='" + key + "' aria-label='" + label + "'><i></i></button></div>";
   }
-  function pForEngine() { return Object.assign({}, W, { salary: num(W.salary), bonus: num(W.bonus), k401Pre: num(W.k401Pre), k401Roth: num(W.k401Roth), hsa: num(W.hsa), rothIra: num(W.rothIra), matchPct: num(W.matchPct), stateRate: num(W.stateRate), extraItemized: num(W.extraItemized) }); }
+  function pForEngine(asEmployee) { var q = pForEngine0(); if (W.contract && !asEmployee) { q.k401Pre = 0; q.k401Roth = 0; q.hsa = 0; q.matchPct = 0; q.hsaEligible = false; } return q; }
+  function pForEngine0() { return Object.assign({}, W, { salary: num(W.salary), bonus: num(W.bonus), k401Pre: num(W.k401Pre), k401Roth: num(W.k401Roth), hsa: num(W.hsa), rothIra: num(W.rothIra), matchPct: num(W.matchPct), stateRate: num(W.stateRate), extraItemized: num(W.extraItemized) }); }
 
   /* ---------- Next best action ---------- */
   function nextAction() {
@@ -1713,10 +1715,22 @@ var FavFIEngine = (function () {
       field("State income tax rate", "stateRate", { prefix: false, suffix: "%" }) + "</div>" +
       "<p class='hint' style='margin:10px 0 0'>For the state rate, use your effective rate (0% if your state has no income tax, such as TX, FL, WA, NV or TN). Many states are between 3% and 6% at this income.</p>" +
       "<h2 style='margin-top:20px'>What you save today</h2><div class='fw-grid'>" + field("Pre-tax 401(k) per year", "k401Pre") + field("Roth 401(k) per year", "k401Roth") + field("Employer match (% of pay)", "matchPct", { prefix: false, suffix: "%" }) + field("HSA per year", "hsa") + field("Roth IRA per year", "rothIra") + "</div>" +
-      tog("My health plan is HSA-eligible", "A high-deductible plan that qualifies for an HSA", "hsaEligible") + (W.hsaEligible ? tog("Family coverage", "Family limit is higher than self-only", "hsaFamily") : "") +
+      tog("I'm a contractor now, converting to full-time", "Hides 401(k), match and HSA tips until you have an employer plan", "contract") + (W.contract ? "<div class='fw-grid' style='margin:10px 0'><div class='fw-f'><label for='fw-conv'>Expected full-time start date</label><div class='in'><input id='fw-conv' type='date' data-k='convDate' value='" + esc(W.convDate || "") + "'></div></div></div>" : "") + tog("My health plan is HSA-eligible", "A high-deductible plan that qualifies for an HSA", "hsaEligible") + (W.hsaEligible ? tog("Family coverage", "Family limit is higher than self-only", "hsaFamily") : "") +
       tog("I'm 50 or older", "Adds the 401(k) catch-up", "age50") + (W.hsaEligible ? tog("I'm 55 or older", "Adds the HSA catch-up", "age55") : "") +
       "<div class='fw-grid' style='margin-top:12px'>" + field("Other itemized deductions (optional)", "extraItemized") + "</div><p class='hint' style='margin:8px 0 0'>Only fill this in if you itemize (for example mortgage interest plus state and local taxes). Most people at this income take the standard deduction.</p>" +
       "<div id='fw-salnote'></div></div>";
+  }
+  function convHtml() {
+    if (!W.contract) return "";
+    var start = W.convDate ? new Date(W.convDate + "T12:00:00") : new Date(Date.now() + 90 * 864e5), days = Math.ceil((start - new Date()) / 864e5), p = pForEngine(true), L = E.levers(p), top = L.list[0];
+    var next = start.getFullYear() > new Date().getFullYear();
+    var step = [["Before day one", "Ask HR when 401(k) and benefits enrollment opens and how long you have to sign up (often 30 days). Ask about the match formula and vesting."],
+      ["Day one", "Set your 401(k) contribution so the paycheck deferrals reach the match first, then your target. Enroll in health, dental, vision and any HSA-eligible plan."],
+      ["First month", "Check employer life and disability coverage, FSA or commuter benefits, and stock purchase plans. Update withholding on a new W-4."]].map(function (x) { return "<div class='fw-chk'><div><b>" + x[0] + "</b><span>" + x[1] + "</span></div></div>"; }).join("");
+    return "<div class='fw-card'><h2>Converting to full-time</h2><p class='hint'>" + (days > 0 ? "About " + days + " days away" + (next ? ", so your employer plan starts in " + start.getFullYear() + "." : ".") : "Your start date has passed. Turn this off in the Tax Lab once you're on the plan.") + "</p>" +
+      (next ? "<p class='hint'>That means no employer 401(k) or HSA is available for the rest of " + E.YEAR + ", so the estimate above leaves them out. Your options for " + E.YEAR + " are a Roth or traditional IRA (you have until April 15 to fund it) and, if you're paid on a 1099, a SEP-IRA or solo 401(k).</p>" : "") +
+      (top ? "<p class='hint'><b>Once you're on the plan:</b> maxing your 401(k) at today's pay would cut your yearly tax by about " + fmt(top.saves) + (L.list.length > 1 ? ", and the full set of tips by about " + fmt(L.list.reduce(function (s, x) { return s + (x.match ? 0 : x.saves); }, 0)) : "") + ". Limits for the new year are usually announced in the fall, so these use " + E.YEAR + " numbers.</p>" : "") +
+      "<p class='hint'>If you're paid on a 1099 today, you also owe self-employment tax (about 15.3%) that this estimate doesn't include. Ask a CPA about quarterly estimated payments.</p>" + step + "</div>";
   }
   function taxResults() {
     var p = pForEngine(); if (!p.salary) return "<div class='fw-card'><h2>Your 2026 estimate</h2><p class='hint'>Add your salary above to see your estimate.</p></div>";
@@ -1734,7 +1748,7 @@ var FavFIEngine = (function () {
     var rothVs = R.marginal >= 0.24 ? "At a " + Math.round(R.marginal * 100) + "% bracket, pre-tax 401(k) money usually saves more today; a Roth IRA is a good complement for tax-free growth and flexibility in retirement." : "At a " + Math.round(R.marginal * 100) + "% bracket, a Roth IRA is often attractive: you pay tax now at a lower rate and withdraw tax-free later.";
     var rothBar = R.allowed ? "<div class='fw-prog'><i style='width:" + Math.min(100, R.cur / R.allowed * 100) + "%'></i></div><p class='hint' style='margin:4px 0 8px'>" + fmt(R.cur) + " of " + fmt(R.allowed) + " used" + (R.room ? ", " + fmt(R.room) + " left (about " + fmt(R.room / 12) + " a month)" : ", you've filled it") + ".</p>" : "";
     var maxK = E.LIM.k401 + (W.age50 ? E.LIM.k401Catch : 0), cur = num(W.k401Pre);
-    return "<div class='fw-card'><h2>Your " + E.YEAR + " estimate</h2><p class='hint'>Federal, payroll and state tax on " + fmt(e.gross) + " of pay.</p>" +
+    return convHtml() + "<div class='fw-card'><h2>Your " + E.YEAR + " estimate</h2><p class='hint'>Federal, payroll and state tax on " + fmt(e.gross) + " of pay.</p>" +
       "<div class='fw-big'><div><b>" + fmt(e.total) + "</b><span>estimated total tax (" + (e.effective * 100).toFixed(1) + "% of pay)</span></div><div><b>" + fmt(e.takeHome / 12) + "</b><span>take-home per month after saving</span></div></div>" +
       "<div class='fw-bar'>" + bar + "</div><div class='fw-leg'>" + leg + "</div><p class='hint' style='margin:14px 0 0'>" + room + "</p></div>" +
       "<div class='fw-card'><h2>Ways to lower your tax</h2><p class='hint'>Ranked by dollars saved. Each uses your own numbers.</p>" + rows + "</div>" +
@@ -1918,7 +1932,7 @@ var FavFIEngine = (function () {
   document.addEventListener("input", function (e) {
     var t = e.target; if (!host || !host.contains(t) || !t.getAttribute) return;
     var k = t.getAttribute("data-k"); if (!k) return;
-    if (t.tagName === "SELECT") W[k] = t.value; else W[k] = (k === "stateRate" || k === "matchPct") ? num(t.value) : t.value === "" ? 0 : num(t.value);
+    if (t.tagName === "SELECT" || k === "convDate") W[k] = t.value; else W[k] = (k === "stateRate" || k === "matchPct") ? num(t.value) : t.value === "" ? 0 : num(t.value);
     saveW(); if (tab === "tax") refreshResults(); else if (tab === "give") renderGiveOnly(); else if (tab === "protect") { var lc = host.querySelector("#fw-life"); if (lc) { var tmp = el("div", null, lifeHtml()); lc.querySelector("#fw-lifeout").innerHTML = tmp.querySelector("#fw-lifeout").innerHTML; } }
   });
   function renderGiveOnly() {
