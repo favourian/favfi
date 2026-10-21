@@ -2205,7 +2205,8 @@ var FavFIEngine = (function () {
   }
   function planHtml() {
     var rev = "<div class='fw-card'><h2>Your year in review</h2><p class='hint'>A short, private look back at what you've paid down, saved and protected.</p><div class='fw-acts'><button class='fw-btn' data-a='review'>Play my review</button><button class='fw-btn g' data-a='shareprog'>Share progress</button></div></div>";
-    return "<div class='fw-card'><h2>Debt or invest?</h2><p class='hint'>Where should your next extra dollar go? This uses your cards from FavFI.</p><div class='fw-grid'>" + field("Extra per month", "extraMo") + field("Expected investment return", "invRet", { prefix: false, suffix: "%" }) + "</div><div id='fw-pres' style='margin-top:6px'>" + planResults() + "</div></div>" + rev;
+    var wg = "<div class='fw-card'><h2>Home Screen card</h2><p class='hint'>A widget-shaped card of your progress, in percentages and months only. Save it and show it with the Photos widget.</p><div class='fw-acts'><button class='fw-btn' data-a='widget'>Make my card</button></div></div>";
+    return "<div class='fw-card'><h2>Debt or invest?</h2><p class='hint'>Where should your next extra dollar go? This uses your cards from FavFI.</p><div class='fw-grid'>" + field("Extra per month", "extraMo") + field("Expected investment return", "invRet", { prefix: false, suffix: "%" }) + "</div><div id='fw-pres' style='margin-top:6px'>" + planResults() + "</div></div>" + rev + wg;
   }
   REFRESH.plan = function () { var r = host && host.querySelector("#fw-pres"); if (r) { host.classList.add("fw-still"); r.innerHTML = planResults(); } };
 
@@ -2386,6 +2387,7 @@ var FavFIEngine = (function () {
     paint();
   }
   ACT.review = function () { openReview(); };
+  ACT.widget = function () { if (window.FavFIWidget) window.FavFIWidget.open(); };
 
   /* ---------- Take it further (replaces the first version) ---------- */
   function takeItFurther() {
@@ -3051,6 +3053,136 @@ var FavFIEngine = (function () {
     });
   }
   setInterval(emptyStates, 1500);
+})();
+
+/* FavFI Home Screen card: a widget-shaped image you can save to Photos and show with the Photos widget.
+   It shows percentages and months only, never dollar amounts. Everything is drawn on this device. */
+(function () {
+  "use strict";
+  var META = "favfi:meta:v1";
+  function gm() { try { return JSON.parse(localStorage.getItem(META) || "{}") || {}; } catch (e) { return {}; } }
+  function sm(p) { var m = gm(); for (var k in p) m[k] = p[k]; try { localStorage.setItem(META, JSON.stringify(m)); } catch (e) {} }
+  function el(tag, cls, html) { var n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function data() { try { return JSON.parse(window.FavFIData.exportJson()).data; } catch (e) { return null; } }
+
+  var css = el("style");
+  css.textContent =
+    ".fv-wg{max-width:520px}.fv-wg h3{margin:0 0 2px}.fv-wg .sub{font-size:13.5px;color:hsl(var(--muted-foreground));margin:0 0 14px;line-height:1.45}" +
+    ".fv-wg .stage{display:flex;justify-content:center;align-items:center;padding:22px 12px;border-radius:22px;background:linear-gradient(145deg,hsl(var(--muted)/.7),hsl(var(--muted)/.35));margin-bottom:14px;min-height:150px}" +
+    ".fv-wg canvas{display:block;border-radius:26px;box-shadow:0 14px 34px rgba(50,40,20,.22),0 3px 8px rgba(50,40,20,.12);transition:transform .45s cubic-bezier(.2,.9,.2,1.1),width .45s cubic-bezier(.2,.9,.2,1.1),height .45s cubic-bezier(.2,.9,.2,1.1);transform-style:preserve-3d;will-change:transform}" +
+    ".fv-wg .grp{margin:12px 0 0}.fv-wg .grp b{display:block;font:600 11px system-ui;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--muted-foreground));margin-bottom:6px}" +
+    ".fv-wg .ch{display:flex;flex-wrap:wrap;gap:8px}.fv-wg .ch button{border:1px solid hsl(var(--border));background:hsl(var(--card));border-radius:99px;padding:8px 14px;min-height:38px;font:500 13.5px system-ui;color:hsl(var(--foreground));transition:all .2s}.fv-wg .ch button[aria-pressed=true]{background:hsl(var(--primary)/.14);border-color:hsl(var(--primary)/.5);color:hsl(var(--primary))}.fv-wg .ch button:active{transform:scale(.95)}.fv-wg .ch button:disabled{opacity:.4}" +
+    ".fv-wg details{margin-top:14px;font-size:13.5px;color:hsl(var(--muted-foreground));line-height:1.5}.fv-wg summary{cursor:pointer;color:hsl(var(--primary));font-weight:500;list-style:none;min-height:32px;display:flex;align-items:center}.fv-wg summary::-webkit-details-marker{display:none}.fv-wg ol{margin:6px 0 0;padding-left:20px}.fv-wg li{margin:3px 0}" +
+    ".fv-wg .priv{display:flex;gap:8px;align-items:center;font-size:12.5px;color:hsl(var(--muted-foreground));margin-top:12px}.fv-wg .priv svg{flex:none}";
+  document.head.appendChild(css);
+
+  /* ---------- the numbers (no dollars) ---------- */
+  function streakOf(d) {
+    var set = {}; (d.paidMonths || []).forEach(function (x) { set[x.month] = 1; });
+    var n = new Date(), k = n.getFullYear() * 12 + n.getMonth(), c = 0, key = function (v) { return Math.floor(v / 12) + "-" + ("0" + (v % 12 + 1)).slice(-2); };
+    if (!set[key(k)]) k--; while (set[key(k)]) { c++; k--; } return c;
+  }
+  function facts() {
+    var d = data() || {}, F = {}, cards = d.creditCards || [], snaps = d.snapshots || [], by = {};
+    snaps.forEach(function (x) { by[x.snapshotMonth] = (by[x.snapshotMonth] || 0) + x.balance; });
+    var ms = Object.keys(by).sort(), cur = cards.reduce(function (a, c) { return a + (+c.balance || 0); }, 0), first = ms.length ? by[ms[0]] : cur;
+    var proj = null; try { proj = window.FavFIData.projection(0); } catch (e) {}
+    var paidPct = first > 0 ? Math.max(0, Math.min(1, (first - cur) / first)) : (cards.length ? 0 : 1);
+    F.debt = { label: "Debt-free in", pct: paidPct, n: proj ? proj.baseMonths : 0, fmt: function (v) { return cards.length && cur > 0 ? Math.round(v) + "" : "Done"; }, unit: cur > 0 ? "months" : "", row: Math.round(paidPct * 100) + "% of debt paid", ok: true };
+    var liquid = (d.assets || []).filter(function (a) { return /sav|check|cash/i.test(a.type || a.name || ""); }).reduce(function (s, a) { return s + (+a.value || 0); }, 0), mo = (d.expenses || []).reduce(function (s, x) { return s + (+x.amount || 0); }, 0), fm = mo ? liquid / mo : 0;
+    F.fund = { label: "Emergency fund", pct: Math.min(1, fm / 6), n: fm, fmt: function (v) { return v.toFixed(1); }, unit: "months", row: fm.toFixed(1) + " months saved", ok: mo > 0 };
+    var ex = d.expenses || [], paid = ex.filter(function (e) { return e.paymentStatus === "paid"; }).length;
+    F.bills = { label: "Bills this month", pct: ex.length ? paid / ex.length : 0, n: paid, fmt: function (v) { return Math.round(v) + " of " + ex.length; }, unit: "paid", row: paid + " of " + ex.length + " bills paid", ok: ex.length > 0 };
+    var goal = null; try { var w = window.FavFIData.getWealth() || {}; goal = (w.goals || []).filter(function (g) { return g.kind !== "efund" && +g.target > 0; })[0]; } catch (e) {}
+    var gp = goal ? Math.max(0, Math.min(1, (+goal.saved || 0) / +goal.target)) : 0;
+    F.goal = { label: goal ? goal.name : "Top goal", pct: gp, n: gp * 100, fmt: function (v) { return Math.round(v) + "%"; }, unit: "there", row: goal ? Math.round(gp * 100) + "% to " + goal.name : "", ok: !!goal };
+    F.streak = { row: streakOf(d) + "-month streak", ok: streakOf(d) > 0 };
+    return F;
+  }
+
+  /* ---------- drawing ---------- */
+  var THEMES = {
+    sage: { a: "#f1f5ee", b: "#d2e2d6", tx: "#2c4a3b", mu: "#6b8576", tr: "rgba(44,74,59,.13)", rg: "#3f7f5f", rg2: "#7fb596", dot: "#d9a441", blob: "rgba(255,255,255,.55)" },
+    night: { a: "#244436", b: "#14261e", tx: "#eaf2ec", mu: "#9fb8a8", tr: "rgba(255,255,255,.14)", rg: "#86c9a3", rg2: "#c3e8d1", dot: "#f0c96a", blob: "rgba(134,201,163,.12)" },
+    sunrise: { a: "#fcf3e6", b: "#f2d6bd", tx: "#5a3b22", mu: "#9a7a5e", tr: "rgba(90,59,34,.12)", rg: "#c9735b", rg2: "#e8a58f", dot: "#d9a441", blob: "rgba(255,255,255,.5)" }
+  };
+  var SIZES = { small: [170, 170], medium: [364, 170] };
+  function rr(x, a, b, c, d, r) { x.beginPath(); if (x.roundRect) x.roundRect(a, b, c, d, r); else x.rect(a, b, c, d); }
+  function draw(cv, size, heroKey, themeKey, t, scale) {
+    var F = facts(), T = THEMES[themeKey] || THEMES.sage, S = SIZES[size], W = S[0], H = S[1], hero = F[heroKey] && F[heroKey].ok ? F[heroKey] : F.debt;
+    cv.width = W * scale; cv.height = H * scale; var x = cv.getContext("2d"); x.setTransform(scale, 0, 0, scale, 0, 0);
+    var g = x.createLinearGradient(0, 0, W, H); g.addColorStop(0, T.a); g.addColorStop(1, T.b); x.fillStyle = g; x.fillRect(0, 0, W, H);
+    x.fillStyle = T.blob; x.beginPath(); x.arc(W - 20, 10, 70, 0, 7); x.fill(); x.fillStyle = T.blob; x.globalAlpha = .6; x.beginPath(); x.arc(14, H + 8, 60, 0, 7); x.fill(); x.globalAlpha = 1;
+    var e = 1 - Math.pow(1 - t, 3), cx = size === "small" ? W / 2 : 92, cy = size === "small" ? 98 : H / 2 + 2, r = size === "small" ? 44 : 50, lw = 10;
+    x.lineCap = "round"; x.lineWidth = lw; x.strokeStyle = T.tr; x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.stroke();
+    var end = -Math.PI / 2 + Math.PI * 2 * Math.max(0.0001, hero.pct * e);
+    var rg = x.createLinearGradient(cx - r, cy - r, cx + r, cy + r); rg.addColorStop(0, T.rg2); rg.addColorStop(1, T.rg); x.strokeStyle = rg; if (hero.pct * e > 0.006) { x.beginPath(); x.arc(cx, cy, r, -Math.PI / 2, end); x.stroke(); }
+    if (hero.pct > 0.02) { x.fillStyle = T.dot; x.beginPath(); x.arc(cx + r * Math.cos(end), cy + r * Math.sin(end), 3.2, 0, 7); x.fill(); }
+    x.textAlign = "center"; x.fillStyle = T.tx; var txt = hero.fmt(hero.n * e); x.font = "500 " + (txt.length > 5 ? 19 : 27) + "px Georgia, 'Times New Roman', serif"; x.fillText(txt, cx, cy + (hero.unit ? 4 : 9));
+    if (hero.unit) { x.fillStyle = T.mu; x.font = "500 10px system-ui, -apple-system, sans-serif"; x.fillText(hero.unit, cx, cy + 20); }
+    x.textAlign = "left";
+    if (size === "small") { x.fillStyle = T.mu; x.font = "600 10px system-ui, -apple-system, sans-serif"; if (x.letterSpacing !== undefined) x.letterSpacing = "1.2px"; x.fillText(hero.label.toUpperCase().slice(0, 22), 14, 24); if (x.letterSpacing !== undefined) x.letterSpacing = "0px"; }
+    else {
+      var X0 = 176; x.fillStyle = T.mu; x.font = "600 10px system-ui, -apple-system, sans-serif"; if (x.letterSpacing !== undefined) x.letterSpacing = "1.2px"; x.fillText(hero.label.toUpperCase().slice(0, 26), X0, 30); if (x.letterSpacing !== undefined) x.letterSpacing = "0px";
+      var rows = ["debt", "fund", "bills", "goal", "streak"].filter(function (k) { return k !== heroKey && F[k] && F[k].ok && F[k].row; }).slice(0, 3);
+      rows.forEach(function (k, i) { var y = 62 + i * 33, a = Math.min(1, Math.max(0, (t - i * .12) / .6)); x.globalAlpha = a; x.fillStyle = T.dot; x.beginPath(); x.arc(X0 + 4, y - 5, 3.5, 0, 7); x.fill(); x.fillStyle = T.tx; x.font = "500 15px Georgia, 'Times New Roman', serif"; x.fillText(F[k].row, X0 + 16, y); x.globalAlpha = 1; });
+    }
+    x.fillStyle = T.mu; x.font = "500 9px system-ui, -apple-system, sans-serif"; x.textAlign = "right"; x.globalAlpha = .8; x.fillText("FavFI", W - 12, H - 10); x.globalAlpha = 1;
+  }
+
+  /* ---------- the sheet ---------- */
+  function open() {
+    var st = gm(), size = st.wgSize || "small", hero = st.wgHero || "debt", theme = st.wgTheme || "sage", raf = 0, F0 = facts();
+    if (!F0[hero] || !F0[hero].ok) hero = "debt";
+    var s = el("div", "fv-sheet"), c = el("div", "fv-card fv-wg"); c.style.maxHeight = "92vh"; c.style.overflow = "auto"; s.appendChild(c);
+    function chips(key, list, cur, dis) { return list.map(function (o) { return "<button type='button' data-" + key + "='" + o[0] + "' aria-pressed='" + (cur === o[0]) + "'" + (dis && dis(o[0]) ? " disabled" : "") + ">" + o[1] + "</button>"; }).join(""); }
+    c.innerHTML = "<h3>Home Screen card</h3><p class='sub'>A widget-shaped card of your progress. Save it, then show it with the Photos widget.</p>" +
+      "<div class='stage'><canvas id='wg-cv' aria-label='Preview of your Home Screen card'></canvas></div>" +
+      "<div class='grp'><b>Size</b><div class='ch' id='wg-size'>" + chips("size", [["small", "Small"], ["medium", "Medium"]], size) + "</div></div>" +
+      "<div class='grp'><b>Highlight</b><div class='ch' id='wg-hero'>" + chips("hero", [["debt", "Debt-free"], ["fund", "Emergency fund"], ["bills", "Bills paid"], ["goal", "Top goal"]], hero, function (k) { return !F0[k].ok; }) + "</div></div>" +
+      "<div class='grp'><b>Look</b><div class='ch' id='wg-theme'>" + chips("theme", [["sage", "Sage"], ["night", "Night"], ["sunrise", "Sunrise"]], theme) + "</div></div>" +
+      "<div class='priv'><svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='11' width='16' height='10' rx='2'/><path d='M8 11V8a4 4 0 0 1 8 0v3'/></svg><span>Shows percentages and months only. No dollar amounts, no names.</span></div>" +
+      "<details><summary>How to put it on your Home Screen</summary><ol><li>Tap <b>Save image</b>, then <b>Save Image</b> to add it to Photos.</li><li>Press and hold an empty spot on your Home Screen, tap <b>+</b>, and choose the <b>Photos</b> widget.</li><li>Tap the widget, choose <b>Select Photo</b>, and pick your card.</li></ol><p style='margin:8px 0 0'>The card is a snapshot. Come back here and save a new one whenever you want fresh numbers.</p></details>" +
+      "<div class='row' style='margin-top:16px'><button class='fv-btn g' id='wg-x'>Done</button><button class='fv-btn' id='wg-save'>Save image</button></div>";
+    document.body.appendChild(s);
+    var cv = c.querySelector("#wg-cv");
+    function dims() { var S = SIZES[size], mx = Math.min(c.clientWidth - 70, size === "small" ? 200 : 380), w = Math.max(150, mx); cv.style.width = w + "px"; cv.style.height = (w * S[1] / S[0]) + "px"; }
+    function play() {
+      cancelAnimationFrame(raf); dims(); var calm = document.documentElement.classList.contains("fv-calm") || (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches), t0 = performance.now();
+      if (calm) { draw(cv, size, hero, theme, 1, 2); return; }
+      (function step(n) { var k = Math.min(1, (n - t0) / 1100); draw(cv, size, hero, theme, k, 2); if (k < 1) raf = requestAnimationFrame(step); })(t0);
+    }
+    function pick(group, key, val) {
+      c.querySelectorAll("#wg-" + group + " button").forEach(function (b) { b.setAttribute("aria-pressed", b.getAttribute("data-" + key) === val ? "true" : "false"); });
+      if (group === "size") size = val; if (group === "hero") hero = val; if (group === "theme") theme = val; sm({ wgSize: size, wgHero: hero, wgTheme: theme });
+      try { window.FavFIFx && window.FavFIFx.haptic(); } catch (e) {} cv.style.transform = "scale(.96)"; setTimeout(function () { cv.style.transform = ""; }, 140); play();
+    }
+    [["size", "size"], ["hero", "hero"], ["theme", "theme"]].forEach(function (p) { c.querySelectorAll("#wg-" + p[0] + " button").forEach(function (b) { b.onclick = function () { pick(p[0], p[1], b.getAttribute("data-" + p[1])); }; }); });
+    /* gentle 3D tilt on the preview, like the app's cards */
+    var stage = c.querySelector(".stage");
+    stage.addEventListener("pointermove", function (e) { if (document.documentElement.classList.contains("fv-notilt") || document.documentElement.classList.contains("fv-calm")) return; var r = cv.getBoundingClientRect(), px = (e.clientX - r.left) / r.width - .5, py = (e.clientY - r.top) / r.height - .5; cv.style.transform = "perspective(900px) rotateX(" + (-py * 12).toFixed(1) + "deg) rotateY(" + (px * 12).toFixed(1) + "deg) scale(1.02)"; });
+    stage.addEventListener("pointerleave", function () { cv.style.transform = ""; });
+    function close() { cancelAnimationFrame(raf); s.remove(); }
+    s.addEventListener("click", function (e) { if (e.target === s) close(); });
+    c.querySelector("#wg-x").onclick = close;
+    c.querySelector("#wg-save").onclick = function (ev) {
+      var b = ev.currentTarget, out = document.createElement("canvas"); draw(out, size, hero, theme, 1, 3);
+      out.toBlob(function (blob) {
+        var name = "FavFI-home-card-" + size + ".png", f = new File([blob], name, { type: "image/png" }), done = function () { var o = b.textContent; b.textContent = "Saved"; try { window.FavFIFx && (window.FavFIFx.chime("good"), window.FavFIFx.haptic()); } catch (e) {} setTimeout(function () { b.textContent = o; }, 1600); };
+        if (navigator.canShare && navigator.canShare({ files: [f] })) navigator.share({ files: [f], title: "FavFI card" }).then(done, function () {});
+        else { var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); done(); }
+      });
+    };
+    play();
+  }
+  window.FavFIWidget = { open: open };
+
+  /* a button on the dashboard card, next to "Share progress" */
+  setInterval(function () {
+    var sh = document.getElementById("fv-share"); if (!sh || document.getElementById("fv-wg-btn")) return;
+    var b = el("button", null, "Home Screen card"); b.id = "fv-wg-btn"; b.type = "button"; b.onclick = open; sh.parentNode.insertBefore(b, sh);
+  }, 1500);
 })();
 </script>
 <script>(function(){try{if("serviceWorker"in navigator&&/^https?:$/.test(location.protocol)){addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{scope:"./"}).catch(function(){})})}}catch(e){}})();</script>
