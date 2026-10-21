@@ -1512,7 +1512,7 @@ var FavFIEngine = (function () {
     var total = fed + fica + state;
     var saved = k401 + hsa + (+p.k401Roth || 0);
     var takeHome = gross - total - k401 - hsa - (+p.k401Roth || 0);
-    return { fs: fs, gross: gross, agi: agi, deduction: ded, taxable: taxable, fed: fed, fica: fica, state: state, total: total,
+    return { ss: ss, med: med, fs: fs, gross: gross, agi: agi, deduction: ded, taxable: taxable, fed: fed, fica: fica, state: state, total: total,
       takeHome: takeHome, saved: saved, marginal: marginal(taxable, fs), effective: gross ? total / gross : 0, room: roomInBracket(taxable, fs) };
   }
 
@@ -1578,7 +1578,7 @@ var FavFIEngine = (function () {
     return { limit: lim, allowed: allowed, cur: cur, room: Math.max(0, allowed - cur), phase: magi > ph[0] && magi < ph[1], over: magi >= ph[1], magi: magi, lo: ph[0], hi: ph[1], marginal: e.marginal };
   }
   function fmt(n) { return (n < 0 ? "-$" : "$") + Math.round(Math.abs(n)).toLocaleString("en-US"); }
-  return { YEAR: YEAR, LIM: LIM, STD: STD, estimate: estimate, levers: levers, giving: giving, rothIra: rothIra, bunching: bunching, bracketTax: bracketTax, fmt: fmt };
+  return { YEAR: YEAR, LIM: LIM, STD: STD, estimate: estimate, levers: levers, giving: giving, rothIra: rothIra, brackets: function (f) { return BR[nfs(f)]; }, bunching: bunching, bracketTax: bracketTax, fmt: fmt };
 })();
 
 
@@ -1596,12 +1596,13 @@ var FavFIEngine = (function () {
 
   /* ---------- stored wealth profile (lives in the data, so backups carry it) ---------- */
   var W = null, saveT = null;
+  var ACT = {}, REFRESH = {}, AFTER = [];
   function loadW() {
     var w = {}; try { w = window.FavFIData.getWealth() || {}; } catch (e) {}
     var d = data(), prof = d && d.profile && d.profile[0];
     W = Object.assign({ fs: "single", salary: prof ? prof.annualSalary : 0, bonus: 0, k401Pre: 0, k401Roth: 0, hsaEligible: false, hsaFamily: false, hsa: 0,
-      matchPct: 0, rothIra: 0, contract: false, ftSalary: 0, ftBonus: 0, ftK401Pct: 0, ftMatchPct: 0, ftHsa: 0, ctHealth: 0, ftHealth: 0, raiseTo: 0, convDate: "", lifeCover: 0, lifePremium: 0, lifeDeps: false, stateRate: 0, extraItemized: 0, age50: false, age55: false, gift: 0, checks: {} }, w);
-    W.checks = W.checks || {};
+      matchPct: 0, rothIra: 0, contract: false, ftSalary: 0, ftBonus: 0, ftK401Pct: 0, ftMatchPct: 0, ftHsa: 0, ctHealth: 0, ftHealth: 0, raiseTo: 0, convDate: "", lifeCover: 0, lifePremium: 0, lifeDeps: false, stateRate: 0, extraItemized: 0, age50: false, age55: false, gift: 0, checks: {}, payFreq: 26, healthPrem: 0, extraMo: 500, invRet: 7, goals: [], goalMs: {}, fq: {} }, w);
+    W.checks = W.checks || {}; W.goals = W.goals || []; W.goalMs = W.goalMs || {}; W.fq = W.fq || {};
   }
   function saveW() { clearTimeout(saveT); saveT = setTimeout(function () { try { window.FavFIData.setWealth(W); } catch (e) {} }, 400); }
 
@@ -1735,7 +1736,7 @@ var FavFIEngine = (function () {
       field("Salary (per year)", "salary") + field("Bonus (per year)", "bonus") +
       field("State income tax rate", "stateRate", { prefix: false, suffix: "%" }) + "</div>" +
       "<p class='hint' style='margin:10px 0 0'>For the state rate, use your effective rate (0% if your state has no income tax, such as TX, FL, WA, NV or TN). Many states are between 3% and 6% at this income.</p>" +
-      "<h2 style='margin-top:20px'>What you save today</h2><div class='fw-grid'>" + field("Pre-tax 401(k) per year", "k401Pre") + field("Roth 401(k) per year", "k401Roth") + field("Employer match (% of pay)", "matchPct", { prefix: false, suffix: "%" }) + field("HSA per year", "hsa") + field("Roth IRA per year", "rothIra") + "</div>" +
+      "<h2 style='margin-top:20px'>What you save today</h2><div class='fw-grid'>" + field("Pre-tax 401(k) per year", "k401Pre") + field("Roth 401(k) per year", "k401Roth") + field("Employer match (% of pay)", "matchPct", { prefix: false, suffix: "%" }) + field("HSA per year", "hsa") + field("Health premium (monthly)", "healthPrem") + field("Roth IRA per year", "rothIra") + "</div>" +
       tog("I'm a contractor now, converting to full-time", "Hides 401(k), match and HSA tips until you have an employer plan", "contract") + (W.contract ? "<div class='fw-grid' style='margin:10px 0'><div class='fw-f'><label for='fw-conv'>Expected full-time start date</label><div class='in'><input id='fw-conv' type='date' data-k='convDate' value='" + esc(W.convDate || "") + "'></div></div></div>" : "") + tog("My health plan is HSA-eligible", "A high-deductible plan that qualifies for an HSA", "hsaEligible") + (W.hsaEligible ? tog("Family coverage", "Family limit is higher than self-only", "hsaFamily") : "") +
       tog("I'm 50 or older", "Adds the 401(k) catch-up", "age50") + (W.hsaEligible ? tog("I'm 55 or older", "Adds the HSA catch-up", "age55") : "") +
       "<div class='fw-grid' style='margin-top:12px'>" + field("Other itemized deductions (optional)", "extraItemized") + "</div><p class='hint' style='margin:8px 0 0'>Only fill this in if you itemize (for example mortgage interest plus state and local taxes). Most people at this income take the standard deduction.</p>" +
@@ -1782,7 +1783,7 @@ var FavFIEngine = (function () {
     var bar = plan.map(function (x) { return "<i style='width:" + x[1] * 100 + "%;background:" + x[2] + "'></i>"; }).join(""), leg = plan.map(function (x) { return "<span><i style='background:" + x[2] + "'></i>" + x[0] + " " + fmt(mo * x[1]) + "/mo</span>"; }).join("");
     return "<div class='fw-card'><h2>If your pay becomes " + fmt(to) + "</h2><div class='fw-big'><div><b>" + (dT >= 0 ? "+" : "-") + fmt(Math.abs(mo)).replace("-", "") + "</b><span>more take-home per month</span></div><div><b>" + Math.round(keep * 100) + "¢</b><span>kept from each extra dollar</span></div></div>" +
       "<p class='hint'>" + fmt(Math.abs(dG)) + " more pay becomes about " + fmt(Math.abs(dT)) + " after tax. Your federal bracket goes from " + Math.round(a.marginal * 100) + "% to " + Math.round(b.marginal * 100) + "%.</p>" +
-      (plan.length ? "<div class='fw-bar'>" + bar + "</div><div class='fw-leg'>" + leg + "</div><p class='hint' style='margin:12px 0 0'>A simple starting split for the extra money. Increasing your pre-tax 401(k) first stretches it further, because it lowers your tax too.</p>" : "") + "</div>";
+      (plan.length ? jarsHtml(plan, mo) + "<p class='hint' style='margin:12px 0 0'>A simple starting split for the extra money. Increasing your pre-tax 401(k) first stretches it further, because it lowers your tax too.</p>" : "") + "</div>";
   }
   function taxResults() {
     var p = pForEngine(); if (!p.salary) return "<div class='fw-card'><h2>Your 2026 estimate</h2><p class='hint'>Add your salary above to see your estimate.</p></div>";
@@ -1803,10 +1804,10 @@ var FavFIEngine = (function () {
     return convHtml() + compareHtml() + "<div class='fw-card'><h2>Your " + E.YEAR + " estimate</h2><p class='hint'>Federal, payroll and state tax on " + fmt(e.gross) + " of pay.</p>" +
       "<div class='fw-big'><div><b>" + fmt(e.total) + "</b><span>estimated total tax (" + (e.effective * 100).toFixed(1) + "% of pay)</span></div><div><b>" + fmt(e.takeHome / 12) + "</b><span>take-home per month after saving</span></div></div>" +
       "<div class='fw-bar'>" + bar + "</div><div class='fw-leg'>" + leg + "</div><p class='hint' style='margin:14px 0 0'>" + room + "</p></div>" +
-      "<div class='fw-card'><h2>Ways to lower your tax</h2><p class='hint'>Ranked by dollars saved. Each uses your own numbers.</p>" + rows + "</div>" +
+      ladderHtml() + "<div class='fw-card'><h2>Ways to lower your tax</h2><p class='hint'>Ranked by dollars saved. Each uses your own numbers.</p>" + rows + "</div>" +
       "<div class='fw-card'><h2>Try a 401(k) amount</h2><p class='hint'>Drag to see what a different contribution does.</p><div class='fw-big' style='margin:0 0 6px'><div><b id='fw-sv'>" + fmt(cur) + "</b><span>pre-tax 401(k) per year</span></div><div><b id='fw-ss'>" + fmt(0) + "</b><span>less tax than your current plan</span></div></div>" +
       "<input type='range' id='fw-sl' class='fw-slide' min='0' max='" + maxK + "' step='500' value='" + Math.min(cur, maxK) + "' style='--p:" + (Math.min(cur, maxK) / maxK * 100) + "%;-webkit-appearance:none;appearance:none;height:32px;background:transparent'><div class='fv-tk'><span>$0</span><span>" + fmt(maxK) + "</span></div><p class='hint' id='fw-so' style='margin:8px 0 0'></p></div>" +
-      raiseHtml() + "<div class='fw-card'><h2>Roth IRA</h2><p class='hint'>" + roth + "</p>" + rothBar + "<p class='hint' style='margin:0'>" + rothVs + " A Roth IRA doesn't lower this year's tax. You can contribute for " + E.YEAR + " until April 15 of next year. Contributions can be withdrawn anytime; earnings follow retirement rules.</p></div>";
+      raiseHtml() + paycheckHtml() + "<div class='fw-card'><h2>Roth IRA</h2><p class='hint'>" + roth + "</p>" + rothBar + "<p class='hint' style='margin:0'>" + rothVs + " A Roth IRA doesn't lower this year's tax. You can contribute for " + E.YEAR + " until April 15 of next year. Contributions can be withdrawn anytime; earnings follow retirement rules.</p></div>";
   }
   function taxAssumptions() {
     return "<div class='fw-card'><h2>How these numbers work</h2><p class='fw-ft'>Federal income tax uses the " + E.YEAR + " brackets for single, head-of-household and married-filing-jointly filers and the standard deduction (" + fmt(E.STD.single) + " single, " + fmt(E.STD.hoh) + " head of household, " + fmt(E.STD.mfj) + " joint) unless you enter itemized deductions. Payroll tax uses 6.2% Social Security up to " + fmt(E.LIM.ssBase) + " of wages plus 1.45% Medicare (and 0.9% above $200,000 single or $250,000 joint). State tax is your rate applied to income after 401(k) and HSA. Not included: tax credits (such as child credits), head-of-household status, local taxes, AMT, investment income, or bonus withholding differences. These are educational estimates, not tax advice. Check figures at <a href='https://www.irs.gov' target='_blank' rel='noopener'>IRS.gov</a> and with a CPA before acting. Sources: <a href='https://www.accountingtoday.com/news/irs-ups-limits-for-401k-and-ira-contributions-in-2026' target='_blank' rel='noopener'>Accounting Today</a>, <a href='https://blog.carnegieinvest.com/tax-updates-for-2026' target='_blank' rel='noopener'>Carnegie Investment Counsel</a>, <a href='https://michaelryanmoney.com/?p=27397' target='_blank' rel='noopener'>Michael Ryan Money</a>.</p></div>";
@@ -1877,7 +1878,7 @@ var FavFIEngine = (function () {
       "<div class='fw-col rec'><span class='fw-tag'>Often the fit</span><h3>Donor-advised fund</h3><ul><li><b>Setup:</b> minutes, low minimums at many sponsors</li><li><b>Ongoing:</b> sponsor handles filings; small fee</li><li><b>Control:</b> you recommend grants over time</li><li><b>Deduction:</b> at contribution; higher limits than a foundation; not eligible for the new non-itemizer deduction</li></ul></div>" +
       "<div class='fw-col'><h3>Private foundation</h3><ul><li><b>Setup:</b> legal and filing costs</li><li><b>Ongoing:</b> annual Form 990-PF, about 1.4% excise tax on investment income, roughly 5% yearly payout</li><li><b>Control:</b> the most, including family involvement</li><li><b>Deduction:</b> lower limits (cash 30% of AGI vs 60% for public charities)</li></ul></div></div>" +
       "<p class='hint' style='margin:14px 0 0'>" + verdict + " Gifts to donor-advised funds and private foundations don't qualify for the new non-itemizer deduction, per <a href='https://www.regions.com/insights/wealth/article/2026-charitable-deduction-rules' target='_blank' rel='noopener' style='color:hsl(var(--primary))'>Regions</a>.</p></div>";
-    return inp + "<div id='fw-gres'>" + res + "</div>" + cols;
+    return inp + "<div id='fw-gres'>" + res + "</div>" + cols + foundationHtml();
   }
 
   /* ---------- Calendar ---------- */
@@ -1946,7 +1947,7 @@ var FavFIEngine = (function () {
     } catch (e) {}
     var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" })); a.download = name; document.body.appendChild(a); a.click(); a.remove();
   }
-  function takeItFurther() {
+  function takeItFurther0() {
     return "<div class='fw-card'><h2>Take it further</h2><p class='hint'>Get a second opinion from Claude, or hand your numbers to a professional.</p><div class='fw-acts'><button class='fw-btn' data-a='ask'>Ask Claude</button><button class='fw-btn g' data-a='cpa'>Save a CPA summary</button></div></div>";
   }
 
@@ -1956,8 +1957,8 @@ var FavFIEngine = (function () {
   function render(still) {
     if (!host) return;
     var nba = nextAction();
-    var tabs = [["tax", "Tax Lab"], ["protect", "Protect"], ["give", "Give"], ["cal", "Calendar"]];
-    var body = tab === "tax" ? taxInputs() + "<div id='fw-res'>" + taxResults() + "</div>" + taxAssumptions() : tab === "protect" ? protectHtml() : tab === "give" ? giveHtml() : calendarHtml();
+    var tabs = [["tax", "Tax Lab"], ["plan", "Plan"], ["goals", "Goals"], ["protect", "Protect"], ["give", "Give"], ["cal", "Calendar"]];
+    var body = tab === "tax" ? taxInputs() + "<div id='fw-res'>" + taxResults() + "</div>" + taxAssumptions() : tab === "plan" ? planHtml() : tab === "goals" ? goalsHtml() : tab === "protect" ? protectHtml() : tab === "give" ? giveHtml() : calendarHtml();
     var hid = window.FavFIPrivacy && window.FavFIPrivacy.isHidden();
     host.innerHTML = "<button type='button' class='fw-eye' data-a='eye' aria-pressed='" + (hid ? "true" : "false") + "' aria-label='" + (hid ? "Show amounts" : "Hide amounts") + "'>" + (hid ? EYE_OFF : EYE) + "<span>" + (hid ? "Show amounts" : "Hide") + "</span></button><h1>Wealth</h1><p class='sub'>Your tax plan and the foundations that protect it. Private, on this device.</p>" +
       "<div class='fw-card fw-nba'><small>" + nba[0] + "</small><p>" + nba[1] + "</p></div>" +
@@ -1965,6 +1966,7 @@ var FavFIEngine = (function () {
       "<p class='fw-ft' style='padding:0 6px'>FavFI gives educational estimates, not tax, legal or investment advice. Rules change and your situation is unique; confirm important decisions with a qualified CPA or attorney.</p>";
     wireSlider(); salaryNote(); host.classList.toggle("fw-still", !!still);
     [].forEach.call(host.querySelectorAll(".fw-card,.fw-tabs"), function (c, i) { c.style.setProperty("--i", Math.min(i, 9)); }); if (!still) countBig(host);
+    AFTER.forEach(function (f) { try { f(!!still); } catch (x) {} });
   }
   function countBig(root) {
     if (document.documentElement.classList.contains("fv-calm") || (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches)) return;
@@ -2038,7 +2040,7 @@ var FavFIEngine = (function () {
     var t = e.target; if (!host || !host.contains(t) || !t.getAttribute) return;
     var k = t.getAttribute("data-k"); if (!k) return;
     if (t.tagName === "SELECT" || k === "convDate") W[k] = t.value; else W[k] = (k === "stateRate" || k === "matchPct") ? num(t.value) : t.value === "" ? 0 : num(t.value);
-    saveW(); if (tab === "tax") refreshResults(); else if (tab === "give") renderGiveOnly(); else if (tab === "protect") { var lc = host.querySelector("#fw-life"); if (lc) { var tmp = el("div", null, lifeHtml()); lc.querySelector("#fw-lifeout").innerHTML = tmp.querySelector("#fw-lifeout").innerHTML; } }
+    saveW(); if (REFRESH[tab] && k !== "gift" && k !== "lifeCover" && k !== "lifePremium") REFRESH[tab](k); else if (tab === "tax") refreshResults(); else if (tab === "give") renderGiveOnly(); else if (tab === "protect") { var lc = host.querySelector("#fw-life"); if (lc) { var tmp = el("div", null, lifeHtml()); lc.querySelector("#fw-lifeout").innerHTML = tmp.querySelector("#fw-lifeout").innerHTML; } }
   });
   function renderGiveOnly() {
     var r = host.querySelector("#fw-gres"); if (!r) return; host.classList.add("fw-still");
@@ -2051,6 +2053,7 @@ var FavFIEngine = (function () {
     if (t.hasAttribute("data-t")) { var k = t.getAttribute("data-t"); W[k] = !W[k]; saveW(); render(true); return; }
     if (t.hasAttribute("data-c")) { var c = t.getAttribute("data-c"); W.checks[c] = !W.checks[c]; saveW(); t.setAttribute("aria-checked", W.checks[c] ? "true" : "false"); if (W.checks[c]) { t.classList.add("pop"); var fx = window.FavFIFx, r = t.getBoundingClientRect(); if (fx) { try { fx.sparkle(r.left + r.width / 2, r.top + r.height / 2); if (fx.on("sound")) fx.chime("tap"); if (fx.on("haptics")) fx.haptic(); if (tab === "protect" && CHECKS.every(function (z) { return W.checks[z[0]]; }) && fx.on("confetti")) fx.confetti(); } catch (x) {} } } t.closest(".fw-chk") && t.closest(".fw-chk").setAttribute("data-done", !!W.checks[c]); if (W.checks[c]) { try { navigator.vibrate && navigator.vibrate(8); } catch (x) {} } var nb = host.querySelector(".fw-prog i"); if (tab === "protect") render(true); return; }
     var a = t.getAttribute("data-a");
+    if (a && ACT[a]) { ACT[a](t, e); return; }
     if (a === "eye") { if (window.FavFIPrivacy) { window.FavFIPrivacy.toggle(); render(true); } }
     else if (a === "ask") openAsk();
     else if (a === "cpa") saveText("FavFI-CPA-summary-" + E.YEAR + ".txt", snapshot("cpa", true));
@@ -2059,6 +2062,351 @@ var FavFIEngine = (function () {
       fetch("/api/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(function () { try { window.__qc && window.__qc.invalidateQueries(); } catch (x) {} salaryNote(); flash(t, "Updated"); });
     }
   });
+  /* =====================================================================
+     Wealth, part 2: ladder, paycheck, jars, Plan (debt vs invest), Goals,
+     foundation check, nudges, year in review, share card.
+     ===================================================================== */
+  var css2 = el("style");
+  css2.textContent =
+    /* ladder */
+    ".fw-lad{display:grid;grid-template-columns:48px 1fr 74px;gap:10px;align-items:center;padding:7px 0}.fw-lad .r{font:600 13px system-ui;color:hsl(var(--muted-foreground));text-align:center;padding:4px 0;border-radius:99px;background:hsl(var(--muted)/.6);transition:all .3s}" +
+    ".fw-lad .b{height:14px;border-radius:99px;background:hsl(var(--muted));overflow:hidden;position:relative}.fw-lad .b i{position:absolute;left:0;top:0;bottom:0;border-radius:99px;background:hsl(152 24% 62%);transition:width .55s cubic-bezier(.2,.8,.2,1),background-color .3s}" +
+    ".fw-lad .t{font:500 13.5px system-ui;text-align:right;color:hsl(var(--muted-foreground))}.fw-lad.on .r{background:hsl(var(--primary));color:hsl(var(--primary-foreground));transform:scale(1.06)}.fw-lad.on .b i{background:hsl(var(--primary))}.fw-lad.on .t{color:hsl(var(--foreground));font-weight:600}" +
+    ".fw-lad small{display:block;font:400 11px system-ui;color:hsl(var(--muted-foreground));grid-column:2;margin-top:-4px}" +
+    /* paycheck */
+    ".fw-pay{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid hsl(var(--border)/.6);font-size:14.5px}.fw-pay:first-of-type{border-top:0}.fw-pay i{width:10px;height:10px;border-radius:50%;flex:none}.fw-pay span{flex:1}.fw-pay b{font-weight:500}.fw-pay.tot{font-weight:600;border-top:2px solid hsl(var(--border))}.fw-pay.tot b{font:500 22px var(--app-font-serif)}" +
+    /* jars */
+    ".fw-jars{display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:12px;margin:14px 0 6px}.fw-jar{text-align:center}.fw-jar .g{position:relative;height:104px;border-radius:16px 16px 26px 26px;border:2px solid hsl(var(--border));background:hsl(var(--muted)/.35);overflow:hidden}" +
+    ".fw-jar .g i{position:absolute;left:0;right:0;bottom:0;height:var(--h);background:var(--c);animation:fwFill 1.2s cubic-bezier(.2,.8,.2,1) backwards;animation-delay:calc(.35s + var(--j,0)*.14s);opacity:.9}.fw-jar .g i::before{content:\"\";position:absolute;left:-10%;right:-10%;top:-7px;height:14px;border-radius:50%;background:var(--c);filter:brightness(1.12)}" +
+    ".fw-jar b{display:block;font:500 15px system-ui;margin-top:8px}.fw-jar span{font:400 12px system-ui;color:hsl(var(--muted-foreground))}@keyframes fwFill{from{height:0}to{height:var(--h)}}#fv-wealth.fw-still .fw-jar .g i{animation:none}" +
+    /* rings & goals */
+    ".fw-goals{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}.fw-goal{display:flex;gap:16px;align-items:center}.fw-ringw{position:relative;width:104px;height:104px;flex:none}.fw-ring{width:104px;height:104px;transform:rotate(-90deg)}.fw-ring circle{fill:none;stroke-width:9;stroke-linecap:round}.fw-ring .bg{stroke:hsl(var(--muted))}.fw-ring .fg{stroke:hsl(var(--primary));transition:stroke-dashoffset 1.2s cubic-bezier(.2,.8,.2,1)}" +
+    ".fw-ringw em{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:500 22px var(--app-font-serif);font-style:normal}.fw-goal h3{font:500 17px var(--app-font-serif);margin:0 0 2px}.fw-goal p{margin:2px 0;font-size:13px;line-height:1.4;color:hsl(var(--muted-foreground))}.fw-goal .row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}" +
+    ".fw-sm{border:0;border-radius:99px;padding:7px 14px;min-height:34px;font:600 13px system-ui;background:hsl(var(--primary)/.12);color:hsl(var(--primary))}.fw-sm.g{background:hsl(var(--muted));color:hsl(var(--muted-foreground))}.fw-sm:active{transform:scale(.95)}" +
+    ".fw-empty{text-align:center;padding:10px 0 4px}.fw-empty svg{width:150px;height:auto}.fw-empty h3{font:500 20px var(--app-font-serif);margin:8px 0 4px}.fw-empty p{font-size:14px;color:hsl(var(--muted-foreground));margin:0 0 14px}" +
+    ".fw-chips{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 4px}.fw-chip{border:1px solid hsl(var(--border));background:hsl(var(--card));border-radius:99px;padding:8px 14px;min-height:38px;font:500 13.5px system-ui;color:hsl(var(--foreground));transition:all .2s}.fw-chip[aria-pressed=true]{background:hsl(var(--primary)/.14);border-color:hsl(var(--primary)/.5);color:hsl(var(--primary))}.fw-chip:active{transform:scale(.95)}" +
+    /* compare bars */
+    ".fw-cmp{display:grid;gap:10px;margin:10px 0}.fw-cmp>div{display:grid;grid-template-columns:110px 1fr 84px;gap:10px;align-items:center;font-size:13.5px}.fw-cmp .b{height:16px;border-radius:99px;background:hsl(var(--muted));overflow:hidden}.fw-cmp .b i{display:block;height:100%;border-radius:99px;background:hsl(152 24% 62%);transform-origin:left;animation:fwGrow .9s cubic-bezier(.2,.8,.2,1) backwards}.fw-cmp .w .b i{background:hsl(var(--primary))}.fw-cmp b{text-align:right;font-weight:500}" +
+    ".fw-verdict{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid hsl(var(--border)/.6);font-size:14px}.fw-verdict:first-of-type{border-top:0}.fw-verdict span.v{flex:none;padding:4px 10px;border-radius:99px;font:600 11.5px system-ui;background:hsl(var(--muted));color:hsl(var(--muted-foreground))}.fw-verdict span.v.go{background:#c9735b22;color:#b05a43}.fw-verdict span.v.inv{background:hsl(var(--primary)/.14);color:hsl(var(--primary))}.fw-verdict div{flex:1;min-width:0}.fw-verdict small{display:block;color:hsl(var(--muted-foreground));font-size:12px}" +
+    /* meter */
+    ".fw-meter{height:12px;border-radius:99px;background:linear-gradient(to right,hsl(152 20% 80%),hsl(var(--primary)));position:relative;margin:14px 0 6px}.fw-meter i{position:absolute;top:-5px;width:22px;height:22px;border-radius:50%;background:#fff;border:3px solid hsl(var(--primary));box-shadow:0 2px 8px rgba(40,30,10,.25);transform:translateX(-50%);transition:left .8s cubic-bezier(.2,.8,.2,1)}.fw-mlab{display:flex;justify-content:space-between;font-size:12px;color:hsl(var(--muted-foreground))}" +
+    /* toast + review */
+    ".fw-toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translate(-50%,24px);opacity:0;z-index:2147482600;width:min(420px,calc(100vw - 32px));padding:14px 16px;border-radius:20px;background:hsl(var(--card));border:1px solid hsl(var(--border));box-shadow:0 10px 36px rgba(60,45,20,.22);display:flex;gap:12px;align-items:center;transition:transform .5s cubic-bezier(.2,.9,.2,1.1),opacity .4s}.fw-toast.in{transform:translate(-50%,0);opacity:1}.fw-toast p{margin:0;flex:1;font-size:14px;line-height:1.4}.fw-toast button{border:0;border-radius:99px;padding:8px 14px;min-height:36px;font:600 13px system-ui}.fw-toast .y{background:hsl(var(--primary));color:hsl(var(--primary-foreground))}.fw-toast .n{background:none;color:hsl(var(--muted-foreground))}" +
+    ".fw-rev{position:fixed;inset:0;z-index:2147482700;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px;text-align:center;color:#fff;transition:background .6s;animation:fvIn .35s ease both}.fw-rev .dots{position:absolute;top:calc(18px + env(safe-area-inset-top));left:18px;right:18px;display:flex;gap:6px}.fw-rev .dots i{flex:1;height:4px;border-radius:99px;background:rgba(255,255,255,.3);overflow:hidden}.fw-rev .dots i.on{background:#fff}" +
+    ".fw-rev small{font:600 12px system-ui;letter-spacing:.12em;text-transform:uppercase;opacity:.8}.fw-rev h2{font:500 clamp(46px,14vw,92px)/1 var(--app-font-serif);margin:14px 0;letter-spacing:-.03em}.fw-rev p{font-size:18px;line-height:1.45;max-width:420px;margin:0 auto;opacity:.92}.fw-rev .x{position:absolute;top:calc(34px + env(safe-area-inset-top));right:18px;border:0;background:rgba(255,255,255,.2);color:#fff;width:40px;height:40px;border-radius:50%;font-size:20px}.fw-rev .acts{display:flex;gap:10px;margin-top:26px}.fw-rev .acts button{border:0;border-radius:99px;padding:13px 22px;font:600 15px system-ui;background:#fff;color:#2c4a3b}.fw-rev .acts button.g{background:rgba(255,255,255,.2);color:#fff}" +
+    ".fw-rev .s{animation:fwUp .6s cubic-bezier(.2,.8,.2,1) backwards}.fw-rev .s2{animation-delay:.12s}.fw-rev .s3{animation-delay:.24s}" +
+    ".fw-q{margin:16px 0 4px}.fw-q b{display:block;font:500 15px system-ui;margin-bottom:2px}";
+  document.head.appendChild(css2);
+
+  /* ---------- tiny helpers ---------- */
+  function monthsLeftIn(date) { var n = new Date(); return Math.max(0, (date.getFullYear() - n.getFullYear()) * 12 + date.getMonth() - n.getMonth()); }
+  function toast(msg, yes, onYes, key) {
+    var old = document.querySelector(".fw-toast"); if (old) old.remove();
+    var t = el("div", "fw-toast"); t.setAttribute("role", "status");
+    t.innerHTML = "<p>" + msg + "</p>" + (yes ? "<button class='y'>" + yes + "</button><button class='n'>Later</button>" : "<button class='n'>OK</button>");
+    document.body.appendChild(t); requestAnimationFrame(function () { requestAnimationFrame(function () { t.classList.add("in"); }); });
+    function close() { t.classList.remove("in"); setTimeout(function () { t.remove(); }, 500); }
+    var y = t.querySelector(".y"); if (y) y.onclick = function () { close(); if (onYes) onYes(); };
+    t.querySelector(".n").onclick = close; setTimeout(close, yes ? 12000 : 5000);
+  }
+  function fx(name) { var f = window.FavFIFx; if (!f) return; try { if (name === "good") { f.haptic(); f.chime("tap"); } else if (name === "big") { f.confetti(); f.chime("big"); } } catch (e) {} }
+  function nowSpark(node) { var f = window.FavFIFx; if (!f || !node) return; var r = node.getBoundingClientRect(); try { f.sparkle(r.left + r.width / 2, r.top + r.height / 2); } catch (e) {} }
+
+  /* ---------- tax ladder ---------- */
+  var ladderInc = null;
+  function ladderRows(inc, fs) {
+    var br = E.brackets(fs), prev = 0, out = [];
+    br.forEach(function (b) {
+      var top = b[0], rate = b[1], span = top === Infinity ? Math.max(150000, inc - prev, 1) : top - prev, filled = Math.max(0, Math.min(span, inc - prev));
+      out.push({ rate: rate, prev: prev, top: top, pct: span ? filled / span : 0, tax: filled * rate, on: inc > prev && inc <= top }); prev = top;
+    });
+    return out;
+  }
+  function ladderHtml() {
+    var p = pForEngine(); if (!p.salary) return "";
+    var e = E.estimate(p), inc = ladderInc == null ? Math.round(e.taxable) : ladderInc, fs = e.fs;
+    var rows = ladderRows(inc, fs).filter(function (r) { return r.prev < 400000; });
+    var tot = rows.reduce(function (s, r) { return s + r.tax; }, 0);
+    return "<div class='fw-card' id='fw-ladder'><h2>Your tax ladder</h2><p class='hint'>You only pay each rate on the dollars inside that step, not on everything you earn. Drag to try a different taxable income.</p>" +
+      "<div class='fw-big' style='margin:0 0 4px'><div><b id='fl-inc'>" + fmt(inc) + "</b><span>taxable income</span></div><div><b id='fl-tax'>" + fmt(tot) + "</b><span>federal tax (<span id='fl-eff'>" + (inc ? (tot / inc * 100).toFixed(1) : "0.0") + "</span>% of it)</span></div></div>" +
+      "<input type='range' id='fl-sl' class='fw-slide fw-range' min='0' max='400000' step='1000' value='" + Math.min(400000, inc) + "' aria-label='Taxable income' style='--p:" + Math.min(100, inc / 4000) + "%'>" +
+      "<div id='fl-rows' style='margin-top:8px'>" + rows.map(function (r, i) {
+        return "<div class='fw-lad" + (r.on ? " on" : "") + "' data-i='" + i + "'><span class='r'>" + Math.round(r.rate * 100) + "%</span><div class='b'><i style='width:" + (r.pct * 100).toFixed(1) + "%'></i></div><span class='t'>" + fmt(r.tax) + "</span><small>" + fmt(r.prev) + (r.top === Infinity ? " and up" : " to " + fmt(r.top)) + "</small></div>";
+      }).join("") + "</div><p class='hint' style='margin:10px 0 0' id='fl-note'></p></div>";
+  }
+  function wireLadder() {
+    var sl = host && host.querySelector("#fl-sl"); if (!sl || sl._w) return; sl._w = 1; sl.classList.add("fw-range");
+    var fs = E.estimate(pForEngine()).fs, std = E.estimate(pForEngine()).deduction;
+    function upd() {
+      var inc = +sl.value; ladderInc = inc; sl.style.setProperty("--p", (inc / 4000) + "%");
+      var rows = ladderRows(inc, fs), tot = rows.reduce(function (s, r) { return s + r.tax; }, 0), els = host.querySelectorAll("#fl-rows .fw-lad");
+      els.forEach(function (n, i) { var r = rows[i]; if (!r) return; n.classList.toggle("on", r.on); n.querySelector("i").style.width = (r.pct * 100) + "%"; n.querySelector(".t").textContent = fmt(r.tax); });
+      host.querySelector("#fl-inc").textContent = fmt(inc); host.querySelector("#fl-tax").textContent = fmt(tot); host.querySelector("#fl-eff").textContent = inc ? (tot / inc * 100).toFixed(1) : "0.0";
+      var cur = rows.filter(function (r) { return r.on; })[0];
+      host.querySelector("#fl-note").textContent = cur ? "Your next dollar is taxed at " + Math.round(cur.rate * 100) + "%. A pre-tax contribution of $1,000 saves about " + fmt(1000 * cur.rate) + " here." : "No federal tax at this level.";
+    }
+    sl.addEventListener("input", upd); upd();
+  }
+
+  /* ---------- paycheck breakdown ---------- */
+  function paycheckHtml() {
+    var p = pForEngine(); if (!p.salary) return "";
+    var e = E.estimate(p), n = +W.payFreq || 26, prem = num(W.healthPrem) * 12, th = e.takeHome - prem;
+    var sage = "hsl(152 30% 36%)", rows = [["Federal tax", e.fed, "#c9735b"], ["Social Security", e.ss, "#d9a441"], ["Medicare", e.med, "#e3c27a"], ["State tax", e.state, "#8aa7c4"], ["401(k) and HSA", e.saved, sage], ["Health premium", prem, "#b48ac4"]].filter(function (r) { return r[1] > 0.5; });
+    var gross = e.gross / n, bar = rows.map(function (r) { return "<i style='width:" + Math.max(0, r[1] / e.gross * 100).toFixed(2) + "%;background:" + r[2] + "'></i>"; }).join("") + "<i style='width:" + Math.max(0, th / e.gross * 100).toFixed(2) + "%;background:hsl(152 20% 80%)'></i>";
+    return "<div class='fw-card'><h2>One paycheck, line by line</h2><p class='hint'>Compare this to your pay stub. Small differences are normal: withholding is an estimate and employers round differently.</p>" +
+      "<div class='fw-f' style='max-width:240px;margin-bottom:10px'><label for='fw-pf'>Paid</label><div class='in'><select id='fw-pf' data-k='payFreq'>" + [[52, "Weekly"], [26, "Every two weeks"], [24, "Twice a month"], [12, "Monthly"]].map(function (o) { return "<option value='" + o[0] + "'" + (n === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></div></div>" +
+      "<div class='fw-bar'>" + bar + "</div>" +
+      "<div class='fw-pay'><span><b>Gross pay</b></span><b>" + fmt(gross) + "</b></div>" +
+      rows.map(function (r) { return "<div class='fw-pay'><i style='background:" + r[2] + "'></i><span>" + r[0] + "</span><b>−" + fmt(r[1] / n).replace("-", "") + "</b></div>"; }).join("") +
+      "<div class='fw-pay tot'><span>Take-home per paycheck</span><b>" + fmt(th / n) + "</b></div>" +
+      "<p class='hint' style='margin:10px 0 0'>Health premiums are shown after tax here. Many employers take them before tax, which would raise your take-home slightly.</p></div>";
+  }
+
+  /* ---------- raise jars ---------- */
+  function jarsHtml(plan, mo) {
+    return "<div class='fw-jars'>" + plan.map(function (x, i) {
+      return "<div class='fw-jar'><div class='g'><i style='--h:" + Math.round(x[1] * 100 * 1.9) + "%;--c:" + x[2] + ";--j:" + i + "'></i></div><b>" + fmt(mo * x[1]) + "</b><span>" + x[0] + "</span></div>";
+    }).join("") + "</div>";
+  }
+
+  /* ---------- Plan tab: debt vs invest ---------- */
+  function simulate(debts, extra, ret, months, payDebtFirst) {
+    var ds = debts.map(function (d) { return { b: +d.balance || 0, r: (+d.apr || 0) / 1200, m: +d.minimumPayment || 0, a: +d.apr || 0 }; }).sort(function (a, b) { return b.a - a.a; }), inv = 0, rm = ret / 1200, free = 0;
+    for (var t = 1; t <= months; t++) {
+      ds.forEach(function (d) { d.b += d.b * d.r; }); inv *= 1 + rm;
+      var pool = extra;
+      ds.forEach(function (d) { var pay = Math.min(d.b, d.m); d.b -= pay; pool += d.m - pay; });
+      if (payDebtFirst) ds.forEach(function (d) { var pay = Math.min(d.b, pool); d.b -= pay; pool -= pay; });
+      inv += pool;
+      if (!free && ds.every(function (d) { return d.b < 1; })) free = t;
+    }
+    var left = ds.reduce(function (s, d) { return s + d.b; }, 0);
+    return { net: inv - left, inv: inv, left: left, free: free };
+  }
+  function planResults() {
+    var d = data() || {}, debts = (d.creditCards || []).filter(function (c) { return +c.balance > 0; }), extra = num(W.extraMo), ret = num(W.invRet) || 7, p = pForEngine();
+    var gap = 0; if (!W.contract && num(W.matchPct) > 0) gap = Math.max(0, num(W.salary) * num(W.matchPct) / 100 - num(W.k401Pre) - num(W.k401Roth));
+    var out = "";
+    if (gap > 0) out += "<div class='fw-verdict'><span class='v inv'>First</span><div><b>Capture your 401(k) match</b><small>You're leaving about " + fmt(gap) + " a year of free money on the table. Nothing below beats it.</small></div></div>";
+    if (!debts.length) return out + "<p class='hint' style='margin:12px 0 0'>You have no card balances in FavFI, so extra money can go straight to investing and your goals.</p>";
+    debts.slice().sort(function (a, b) { return b.apr - a.apr; }).forEach(function (c) {
+      var kind = c.apr >= ret ? "go" : c.apr >= ret - 2 ? "" : "inv", label = kind === "go" ? "Pay down" : kind === "inv" ? "Invest first" : "Either";
+      var why = kind === "go" ? "At " + c.apr + "% interest, paying it off is a sure return above the " + ret + "% you might earn investing." : kind === "inv" ? "At " + c.apr + "%, investing is expected to earn more, but it isn't guaranteed. Many people pay it off for peace of mind." : "Close to your expected return, so choose what lets you sleep.";
+      out += "<div class='fw-verdict'><span class='v " + kind + "'>" + label + "</span><div><b>" + esc(c.name) + "</b> · " + fmt(c.balance) + "<small>" + why + "</small></div></div>";
+    });
+    if (extra > 0) {
+      var A = simulate(debts, extra, ret, 120, true), B = simulate(debts, extra, ret, 120, false), best = Math.max(A.net, B.net, 1), win = A.net >= B.net ? "A" : "B";
+      out += "<h2 style='margin:18px 0 2px;font-size:18px'>Ten years from now</h2><p class='hint'>What " + fmt(extra) + " a month could become (investments minus remaining debt). Assumes " + ret + "% a year and ignores taxes on gains.</p>" +
+        "<div class='fw-cmp'><div class='" + (win === "A" ? "w" : "") + "'><span>Debt first</span><div class='b'><i style='width:" + Math.max(3, A.net / best * 100) + "%'></i></div><b>" + fmt(A.net) + "</b></div><div class='" + (win === "B" ? "w" : "") + "'><span>Invest first</span><div class='b'><i style='width:" + Math.max(3, B.net / best * 100) + "%'></i></div><b>" + fmt(B.net) + "</b></div></div>" +
+        "<p class='hint' style='margin:6px 0 0'>" + (win === "A" ? "Paying debt first comes out ahead by " + fmt(A.net - B.net) + (A.free ? " and you're debt-free in about " + Math.ceil(A.free / 12 * 10) / 10 + " years." : ".") : "Investing first comes out ahead by " + fmt(B.net - A.net) + " in this estimate, but it carries market risk and debt interest is certain.") + "</p>";
+    } else out += "<p class='hint' style='margin:12px 0 0'>Enter an extra monthly amount above to compare the two paths over ten years.</p>";
+    return out;
+  }
+  function planHtml() {
+    var rev = "<div class='fw-card'><h2>Your year in review</h2><p class='hint'>A short, private look back at what you've paid down, saved and protected.</p><div class='fw-acts'><button class='fw-btn' data-a='review'>Play my review</button><button class='fw-btn g' data-a='shareprog'>Share progress</button></div></div>";
+    return "<div class='fw-card'><h2>Debt or invest?</h2><p class='hint'>Where should your next extra dollar go? This uses your cards from FavFI.</p><div class='fw-grid'>" + field("Extra per month", "extraMo") + field("Expected investment return", "invRet", { prefix: false, suffix: "%" }) + "</div><div id='fw-pres' style='margin-top:6px'>" + planResults() + "</div></div>" + rev;
+  }
+  REFRESH.plan = function () { var r = host && host.querySelector("#fw-pres"); if (r) { host.classList.add("fw-still"); r.innerHTML = planResults(); } };
+
+  /* ---------- Goals tab ---------- */
+  var TPL = [["Emergency fund", "efund"], ["House deposit", ""], ["Foundation seed", ""], ["Vacation", ""], ["Something else", ""]];
+  function goalCalc(g) {
+    var d = data() || {}, ru = runway(d), target = +g.target || 0, saved = +g.saved || 0;
+    if (g.kind === "efund") { var m = ru ? ru.monthly : 0; target = m * (+g.months || 3); saved = ru ? ru.liquid : 0; }
+    var pct = target > 0 ? Math.max(0, Math.min(1, saved / target)) : 0, mo = +g.monthly || 0, left = Math.max(0, target - saved), eta = null;
+    if (left > 0 && mo > 0) { eta = new Date(); eta.setMonth(eta.getMonth() + Math.ceil(left / mo)); }
+    return { target: target, saved: saved, pct: pct, left: left, eta: eta, mo: mo };
+  }
+  var C2 = 2 * Math.PI * 42;
+  function ringHtml(pct) { return "<div class='fw-ringw'><svg class='fw-ring' viewBox='0 0 100 100' aria-hidden='true'><circle class='bg' cx='50' cy='50' r='42'/><circle class='fg' cx='50' cy='50' r='42' style='stroke-dasharray:" + C2 + ";stroke-dashoffset:" + C2 + "' data-to='" + (C2 * (1 - pct)) + "'/></svg><em data-pct='" + Math.round(pct * 100) + "'>0%</em></div>"; }
+  function emptyArt() { return "<svg viewBox='0 0 160 110' aria-hidden='true'><ellipse cx='80' cy='96' rx='70' ry='10' fill='hsl(152 25% 88%)'/><path d='M10 96 Q50 58 90 90 Q120 70 150 96Z' fill='hsl(152 28% 78%)'/><path d='M80 92 C80 70 80 58 80 46' stroke='hsl(152 35% 34%)' stroke-width='4' stroke-linecap='round' fill='none'/><path d='M80 62 C64 62 56 52 56 40 C70 40 80 48 80 62Z' fill='hsl(152 38% 46%)'/><path d='M80 54 C94 54 104 44 104 32 C90 32 80 40 80 54Z' fill='hsl(152 42% 56%)'/><circle cx='122' cy='28' r='9' fill='#e8c068'/></svg>"; }
+  function goalsHtml() {
+    var d = data() || {}, nw = (d.assets || []).reduce(function (s, a) { return s + (+a.value || 0); }, 0) - (d.creditCards || []).reduce(function (s, c) { return s + (+c.balance || 0); }, 0);
+    var head = "<div class='fw-card'><h2>Your goals</h2><p class='hint'>Small, clear targets with a ring that fills as you get closer.</p><div class='fw-big' style='margin:0'><div><b>" + fmt(nw) + "</b><span>net worth today</span></div></div></div>";
+    if (!W.goals.length) return head + "<div class='fw-card'><div class='fw-empty'>" + emptyArt() + "<h3>Plant your first goal</h3><p>An emergency fund is a great first one. FavFI tracks it for you automatically.</p><div class='fw-acts' style='justify-content:center'><button class='fw-btn' data-a='goaladd' data-tpl='0'>Emergency fund</button><button class='fw-btn g' data-a='goaladd'>Custom goal</button></div></div></div>";
+    var cards = W.goals.map(function (g, i) {
+      var c = goalCalc(g), bits = "";
+      if (c.pct >= 1) bits = "<p><b style='color:hsl(var(--primary))'>Goal reached. Well done.</b></p>";
+      else {
+        bits = "<p>" + fmt(c.saved) + " of " + fmt(c.target) + "</p>";
+        if (c.eta) bits += "<p>On track for " + c.eta.toLocaleString(undefined, { month: "short", year: "numeric" }) + (g.by ? (c.eta <= new Date(g.by + "T12:00:00") ? " · ahead of your date" : " · behind your date") : "") + "</p>";
+        else if (c.target) bits += "<p>" + fmt(c.left) + " to go" + (g.kind === "efund" ? "" : ". Add a monthly amount to see when you'll get there.") + "</p>";
+      }
+      return "<div class='fw-card'><div class='fw-goal'>" + ringHtml(c.pct) + "<div style='min-width:0'><h3>" + esc(g.name) + "</h3>" + bits + "<div class='row'>" + (g.kind === "efund" ? "" : "<button class='fw-sm' data-a='goaladd$' data-i='" + i + "'>Add money</button>") + "<button class='fw-sm g' data-a='goaledit' data-i='" + i + "'>Edit</button></div></div></div></div>";
+    }).join("");
+    return head + "<div class='fw-goals'>" + cards + "</div><div class='fw-acts' style='margin:0 0 24px'><button class='fw-btn g' data-a='goaladd'>+ New goal</button></div>";
+  }
+  function animateRings(still) {
+    if (!host) return; var calm = document.documentElement.classList.contains("fv-calm");
+    host.querySelectorAll(".fw-ring .fg").forEach(function (c) { var to = c.getAttribute("data-to"); if (calm || still) { c.style.transition = "none"; c.style.strokeDashoffset = to; } else requestAnimationFrame(function () { requestAnimationFrame(function () { c.style.strokeDashoffset = to; }); }); });
+    host.querySelectorAll(".fw-ringw em").forEach(function (em) {
+      var to = +em.getAttribute("data-pct"); if (calm || still) { em.textContent = to + "%"; return; } var t0 = performance.now();
+      (function step(t) { var k = Math.min(1, (t - t0) / 1100); em.textContent = Math.round(to * (1 - Math.pow(1 - k, 3))) + "%"; if (k < 1) requestAnimationFrame(step); })(t0);
+    });
+  }
+  AFTER.push(function (still) { if (tab === "goals") { animateRings(still); checkGoalMilestones(); } wireLadder(); });
+  function levelOf(p) { return p >= 1 ? 100 : p >= .75 ? 75 : p >= .5 ? 50 : p >= .25 ? 25 : 0; }
+  function checkGoalMilestones(silent) {
+    var changed = false;
+    W.goals.forEach(function (g) {
+      var c = goalCalc(g), lv = levelOf(c.pct), prev = W.goalMs[g.id];
+      if (prev === undefined) { W.goalMs[g.id] = lv; changed = true; return; }
+      if (lv > prev) {
+        W.goalMs[g.id] = lv; changed = true;
+        if (!silent) setTimeout(function () {
+          var msg = lv === 100 ? "You reached your <b>" + esc(g.name) + "</b> goal!" : lv === 75 ? "Three quarters of the way to <b>" + esc(g.name) + "</b>." : lv === 50 ? "Halfway to <b>" + esc(g.name) + "</b>. Nice work." : "A quarter of the way to <b>" + esc(g.name) + "</b>. Great start.";
+          toast(msg); if (lv === 100) fx("big"); else fx("good"); nowSpark(host && host.querySelector(".fw-ringw"));
+        }, 900);
+      } else if (lv < prev) { W.goalMs[g.id] = lv; changed = true; }
+    });
+    if (changed) saveW();
+  }
+  function goalSheet(idx, tplIdx) {
+    var g = idx != null ? W.goals[idx] : { id: Date.now(), name: "", target: 0, saved: 0, monthly: 0, by: "", kind: "" };
+    if (idx == null && tplIdx != null && TPL[tplIdx]) { g.name = TPL[tplIdx][0]; g.kind = TPL[tplIdx][1]; if (g.kind === "efund") g.months = 3; }
+    var isE = g.kind === "efund";
+    var s = sheet("<h3>" + (idx != null ? "Edit goal" : "New goal") + "</h3>" + (idx == null && !isE ? "<div class='fw-chips' id='gs-tpl'>" + TPL.map(function (t, i) { return "<button type='button' class='fw-chip' data-i='" + i + "' aria-pressed='" + (g.name === t[0]) + "'>" + t[0] + "</button>"; }).join("") + "</div>" : "") +
+      "<div class='fw-f' style='margin-top:10px'><label>Name</label><div class='in'><input id='gs-name' type='text' value='" + esc(g.name) + "' placeholder='What are you saving for?'></div></div>" +
+      (isE ? "<div class='fw-f' style='margin-top:10px'><label>Months of expenses to cover</label><div class='in'><select id='gs-months'>" + [3, 4, 5, 6, 9, 12].map(function (m) { return "<option" + ((+g.months || 3) === m ? " selected" : "") + ">" + m + "</option>"; }).join("") + "</select></div></div><p class='hint' style='margin-top:8px'>FavFI counts your savings and checking accounts automatically.</p>" :
+        "<div class='fw-grid' style='margin-top:10px'><div class='fw-f'><label>Target</label><div class='in'><span>$</span><input id='gs-target' inputmode='decimal' value='" + (g.target || "") + "' placeholder='0'></div></div><div class='fw-f'><label>Saved so far</label><div class='in'><span>$</span><input id='gs-saved' inputmode='decimal' value='" + (g.saved || "") + "' placeholder='0'></div></div><div class='fw-f'><label>Adding per month</label><div class='in'><span>$</span><input id='gs-mo' inputmode='decimal' value='" + (g.monthly || "") + "' placeholder='0'></div></div><div class='fw-f'><label>Hit by (optional)</label><div class='in'><input id='gs-by' type='date' value='" + esc(g.by || "") + "'></div></div></div>") +
+      "<div class='row' style='margin-top:16px'>" + (idx != null ? "<button class='fv-btn g' id='gs-del'>Delete</button>" : "<span></span>") + "<button class='fv-btn' id='gs-save'>Save</button></div>");
+    s.querySelectorAll("#gs-tpl .fw-chip").forEach(function (b) { b.onclick = function () { var t = TPL[+b.getAttribute("data-i")]; s.remove(); goalSheet(null, +b.getAttribute("data-i")); }; });
+    if (idx != null) s.querySelector("#gs-del").onclick = function () { W.goals.splice(idx, 1); delete W.goalMs[g.id]; saveW(); s.remove(); render(); };
+    s.querySelector("#gs-save").onclick = function () {
+      g.name = (s.querySelector("#gs-name").value || "").trim() || (isE ? "Emergency fund" : "My goal");
+      if (isE) g.months = +s.querySelector("#gs-months").value; else { g.target = num(s.querySelector("#gs-target").value); g.saved = num(s.querySelector("#gs-saved").value); g.monthly = num(s.querySelector("#gs-mo").value); g.by = s.querySelector("#gs-by").value; }
+      if (!isE && !g.target) { s.querySelector("#gs-target").focus(); return; }
+      if (idx == null) W.goals.push(g); saveW(); s.remove(); render();
+    };
+  }
+  function addMoneySheet(idx) {
+    var g = W.goals[idx]; if (!g) return;
+    var s = sheet("<h3>Add to " + esc(g.name) + "</h3><div class='fw-f'><label>Amount</label><div class='in'><span>$</span><input id='am' inputmode='decimal' placeholder='0' autofocus></div></div><div class='fw-chips'>" + [50, 100, 250, 500].map(function (v) { return "<button type='button' class='fw-chip' data-v='" + v + "'>+$" + v + "</button>"; }).join("") + "</div><div class='row' style='margin-top:14px'><button class='fv-btn g' id='am-x'>Cancel</button><button class='fv-btn' id='am-ok'>Add</button></div>");
+    s.querySelectorAll(".fw-chip").forEach(function (b) { b.onclick = function () { s.querySelector("#am").value = b.getAttribute("data-v"); }; });
+    s.querySelector("#am-x").onclick = function () { s.remove(); };
+    s.querySelector("#am-ok").onclick = function () { var v = num(s.querySelector("#am").value); if (!v) return; g.saved = (+g.saved || 0) + v; saveW(); s.remove(); fx("good"); render(true); setTimeout(function () { animateRings(false); }, 30); checkGoalMilestones(); };
+  }
+  ACT.goaladd = function (t) { var i = t.getAttribute("data-tpl"); goalSheet(null, i === null ? null : +i); };
+  ACT["goaladd$"] = function (t) { addMoneySheet(+t.getAttribute("data-i")); };
+  ACT.goaledit = function (t) { goalSheet(+t.getAttribute("data-i")); };
+
+  /* ---------- Foundation readiness (Give tab) ---------- */
+  var FQ = [
+    ["amt", "How much do you expect to give each year?", [["small", "Under $10k"], ["mid", "$10k to $50k"], ["big", "$50k to $250k"], ["huge", "More than $250k"]]],
+    ["hor", "How long do you plan to keep giving?", [["few", "A few years"], ["life", "My lifetime"], ["legacy", "Beyond my lifetime"]]],
+    ["fam", "How involved should family be?", [["none", "Not much"], ["some", "Family helps choose gifts"], ["board", "A family board and a shared mission"]]],
+    ["ast", "What would you give?", [["cash", "Mostly cash"], ["stock", "Appreciated stock or similar"], ["biz", "Business, real estate or complex assets"]]],
+    ["scope", "Where will most gifts go?", [["pub", "Established US charities"], ["ind", "Individuals, small groups or other countries"]]]
+  ];
+  function foundationHtml() {
+    var q = W.fq || {}, answered = FQ.filter(function (x) { return q[x[0]]; }).length;
+    var chips = FQ.map(function (x) { return "<div class='fw-q'><b>" + x[1] + "</b><div class='fw-chips'>" + x[2].map(function (o) { return "<button type='button' class='fw-chip' data-a='fq' data-q='" + x[0] + "' data-v='" + o[0] + "' aria-pressed='" + (q[x[0]] === o[0]) + "'>" + o[1] + "</button>"; }).join("") + "</div></div>"; }).join("");
+    return "<div class='fw-card' id='fw-found'><h2>Is a foundation right for you?</h2><p class='hint'>Five quick questions. This points you toward the right conversation, not a final answer.</p>" + chips + "<div id='fw-fres'>" + foundationResult() + "</div></div>";
+  }
+  function foundationResult() {
+    var q = W.fq || {}, n = FQ.filter(function (x) { return q[x[0]]; }).length; if (n < FQ.length) return "<p class='hint' style='margin:12px 0 0'>Answer all five to see your result (" + n + " of 5).</p>";
+    var sc = { small: 0, mid: 1, big: 3, huge: 5 }[q.amt] + { few: 0, life: 1, legacy: 2 }[q.hor] + { none: 0, some: 1, board: 2 }[q.fam] + { cash: 0, stock: 1, biz: 2 }[q.ast] + { pub: 0, ind: 1 }[q.scope];
+    var tier = sc >= 8 ? 2 : sc >= 4 ? 1 : 0, pos = Math.min(94, 6 + sc / 12 * 88);
+    var head = ["A donor-advised fund fits you best", "Start with a donor-advised fund, and keep a foundation in mind", "A private foundation is worth a serious look"][tier];
+    var body = [
+      "Your giving is at a scale where a foundation's legal and filing costs usually outweigh the benefits. A donor-advised fund gives you the deduction, flexible timing and a family name, with the sponsor handling the paperwork.",
+      "A donor-advised fund lets you start now with almost no setup. If your giving and family involvement grow, you can revisit a foundation later with real history to show an attorney.",
+      "Your answers point to a scale and level of control where a foundation can make sense. Expect setup costs, annual filings, an excise tax on investment income and a minimum yearly payout. Many families still begin with a donor-advised fund while they plan."
+    ][tier];
+    var asks = ["Which sponsors have low minimums and fees?", "Can I name successors so the fund continues in the family?", "How should I time gifts across tax years (bunching)?"];
+    if (tier > 0) asks = ["What would setup, annual filing and administration cost each year?", "How would I handle self-dealing rules, grants to individuals and gifts abroad?", "Would a donor-advised fund now and a foundation later fit better?", "How would a foundation affect how much I can deduct each year?"];
+    return "<div class='fw-meter' aria-hidden='true'><i style='left:6%' id='fw-mk' data-to='" + pos + "'></i></div><div class='fw-mlab'><span>Donor-advised fund</span><span>Private foundation</span></div><h2 style='margin:16px 0 4px;font-size:19px'>" + head + "</h2><p class='hint'>" + body + "</p><p class='hint' style='margin:10px 0 4px'><b>Good questions for your attorney or CPA</b></p><ul style='margin:0;padding-left:18px;font-size:13.5px;line-height:1.6;color:hsl(var(--muted-foreground))'>" + asks.map(function (a) { return "<li>" + a + "</li>"; }).join("") + "</ul>";
+  }
+  function moveMarker() { var m = host && host.querySelector("#fw-mk"); if (!m) return; var to = m.getAttribute("data-to"); requestAnimationFrame(function () { requestAnimationFrame(function () { m.style.left = to + "%"; }); }); }
+  AFTER.push(function () { if (tab === "give") moveMarker(); });
+  ACT.fq = function (t) {
+    W.fq[t.getAttribute("data-q")] = t.getAttribute("data-v"); saveW();
+    host.querySelectorAll("[data-q='" + t.getAttribute("data-q") + "']").forEach(function (b) { b.setAttribute("aria-pressed", b === t ? "true" : "false"); });
+    var r = host.querySelector("#fw-fres"); if (r) { r.innerHTML = foundationResult(); moveMarker(); } fx("good");
+  };
+
+  /* ---------- share card (percentages only, no dollar amounts) ---------- */
+  function progressFacts() {
+    var d = data() || {}, ru = runway(d), cards = d.creditCards || [], snaps = d.snapshots || [], facts = [];
+    var by = {}; snaps.forEach(function (s) { by[s.snapshotMonth] = (by[s.snapshotMonth] || 0) + s.balance; }); var ms = Object.keys(by).sort();
+    var cur = cards.reduce(function (a, c) { return a + (+c.balance || 0); }, 0);
+    if (ms.length >= 1 && by[ms[0]] > 0) facts.push(["Debt paid off", Math.round(Math.max(0, Math.min(100, (by[ms[0]] - cur) / by[ms[0]] * 100))) + "%"]);
+    if (ru) facts.push(["Emergency fund", Math.min(999, Math.round(ru.months * 10) / 10) + " months"]);
+    var done = CHECKS.filter(function (c) { return W.checks[c[0]]; }).length; facts.push(["Protection checklist", done + " of " + CHECKS.length]);
+    var gs = W.goals.map(goalCalc).filter(function (c) { return c.target > 0; }); if (gs.length) facts.push(["Goals on the way", Math.round(gs.reduce(function (s, c) { return s + c.pct; }, 0) / gs.length * 100) + "% average"]);
+    var months = (d.paidMonths || []).length; if (months) facts.push(["Months paid on time", String(months)]);
+    return facts;
+  }
+  function shareProgress(btn) {
+    var facts = progressFacts(), c = document.createElement("canvas"); c.width = 1080; c.height = 1350; var x = c.getContext("2d");
+    var g = x.createLinearGradient(0, 0, 1080, 1350); g.addColorStop(0, "#eef3ec"); g.addColorStop(1, "#d3e2d6"); x.fillStyle = g; x.fillRect(0, 0, 1080, 1350);
+    x.fillStyle = "rgba(255,255,255,.55)"; x.beginPath(); x.arc(900, 220, 260, 0, 7); x.fill(); x.fillStyle = "rgba(90,140,110,.14)"; x.beginPath(); x.arc(120, 1250, 340, 0, 7); x.fill();
+    x.fillStyle = "#2c4a3b"; x.font = "500 84px Georgia,serif"; x.fillText("My money, growing", 90, 210); x.font = "400 34px system-ui,sans-serif"; x.fillStyle = "#5c7a6a"; x.fillText(new Date().toLocaleString(undefined, { month: "long", year: "numeric" }), 90, 270);
+    facts.slice(0, 5).forEach(function (f, i) { var y = 420 + i * 170; x.fillStyle = "rgba(255,255,255,.75)"; if (x.roundRect) { x.beginPath(); x.roundRect(90, y - 70, 900, 130, 36); x.fill(); } else x.fillRect(90, y - 70, 900, 130); x.fillStyle = "#6b8576"; x.font = "500 30px system-ui,sans-serif"; x.fillText(f[0], 130, y - 12); x.fillStyle = "#2c4a3b"; x.font = "500 52px Georgia,serif"; x.fillText(f[1], 130, y + 40); });
+    x.fillStyle = "#6b8576"; x.font = "500 30px system-ui,sans-serif"; x.fillText("Made with FavFI. Private by design.", 90, 1270);
+    c.toBlob(function (blob) {
+      var f = new File([blob], "my-progress.png", { type: "image/png" });
+      if (navigator.canShare && navigator.canShare({ files: [f] })) navigator.share({ files: [f], title: "My progress" }).catch(function () {});
+      else { var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "my-progress.png"; document.body.appendChild(a); a.click(); a.remove(); }
+      if (btn) flash(btn, "Ready");
+    });
+  }
+  ACT.shareprog = function (t) { shareProgress(t); };
+
+  /* ---------- year in review (story) ---------- */
+  function reviewSlides() {
+    var d = data() || {}, y = new Date().getFullYear(), s = [];
+    var cards = d.creditCards || [], snaps = d.snapshots || [], by = {}; snaps.forEach(function (x) { by[x.snapshotMonth] = (by[x.snapshotMonth] || 0) + x.balance; }); var ms = Object.keys(by).sort();
+    var cur = cards.reduce(function (a, c) { return a + (+c.balance || 0); }, 0), paid = ms.length ? Math.max(0, by[ms[0]] - cur) : 0;
+    var nws = (d.nwSnapshots || []).slice().sort(function (a, b) { return a.month < b.month ? -1 : 1; }), nwNow = (d.assets || []).reduce(function (a, c) { return a + (+c.value || 0); }, 0) - cur, nwFirst = nws.length ? nws[0].value : null;
+    var pm = (d.paidMonths || []).filter(function (m) { return String(m.month).indexOf(String(y)) === 0; }).length, done = CHECKS.filter(function (c) { return W.checks[c[0]]; }).length, gs = W.goals.map(goalCalc);
+    s.push({ bg: "linear-gradient(160deg,#3b6b55,#2c4a3b)", k: "Your " + y + " so far", big: "Let's look back", t: "A quick, private look at what you've built. Tap to move on." });
+    s.push({ bg: "linear-gradient(160deg,#c9735b,#9b4f3b)", k: "Debt", big: paid > 0 ? fmt(paid) : "A fresh start", t: paid > 0 ? "paid off since you started tracking. Every payment counted." : "Your balances are your starting line. Log a payment and watch this number grow." });
+    s.push({ bg: "linear-gradient(160deg,#d9a441,#a97a1f)", k: "Consistency", big: pm + (pm === 1 ? " month" : " months"), t: pm ? "with every bill paid. Habits like this are what build wealth." : "Mark a month fully paid to start your streak." });
+    s.push({ bg: "linear-gradient(160deg,#5b86a8,#385a78)", k: "Net worth", big: nwFirst != null ? (nwNow - nwFirst >= 0 ? "+" : "-") + fmt(Math.abs(nwNow - nwFirst)).replace("-", "") : fmt(nwNow), t: nwFirst != null ? "change since your first snapshot. Today you're at " + fmt(nwNow) + "." : "is where you stand today. Check back next month to see your trend." });
+    s.push({ bg: "linear-gradient(160deg,#6b5b95,#463a6b)", k: "Protected", big: done + " of " + CHECKS.length, t: "protection steps done." + (gs.length ? " Your goals are " + Math.round(gs.reduce(function (a, c) { return a + c.pct; }, 0) / gs.length * 100) + "% of the way there on average." : " Add a goal in the Goals tab to start a ring.") });
+    s.push({ bg: "linear-gradient(160deg,#3b6b55,#2c4a3b)", k: "Looking ahead", big: "Here's to " + (y + 1), t: "You're building something real, one decision at a time.", end: true });
+    return s;
+  }
+  function openReview() {
+    var slides = reviewSlides(), i = 0, ov = el("div", "fw-rev"); document.body.appendChild(ov);
+    function paint() {
+      var s = slides[i]; ov.style.background = s.bg;
+      ov.innerHTML = "<div class='dots'>" + slides.map(function (_, j) { return "<i class='" + (j <= i ? "on" : "") + "'></i>"; }).join("") + "</div><button class='x' aria-label='Close'>×</button><small class='s'>" + s.k + "</small><h2 class='s s2'>" + s.big + "</h2><p class='s s3'>" + s.t + "</p>" + (s.end ? "<div class='acts s s3'><button data-r='share'>Share progress</button><button class='g' data-r='close'>Done</button></div>" : "");
+      var h2 = ov.querySelector("h2"), m = /^([+\-]?)\$([\d,]+)$/.exec(h2.textContent);
+      if (m && !document.documentElement.classList.contains("fv-calm")) { var to = +m[2].replace(/,/g, ""), t0 = performance.now(); (function st(t) { var k = Math.min(1, (t - t0) / 1100); h2.textContent = m[1] + "$" + Math.round(to * (1 - Math.pow(1 - k, 3))).toLocaleString("en-US"); if (k < 1) requestAnimationFrame(st); })(t0); }
+      fx("good"); if (s.end) fx("big");
+    }
+    ov.addEventListener("click", function (e) {
+      var b = e.target.closest("button"); if (b && b.classList.contains("x")) { ov.remove(); return; }
+      if (b && b.getAttribute("data-r") === "close") { ov.remove(); return; } if (b && b.getAttribute("data-r") === "share") { shareProgress(b); return; }
+      var left = e.clientX < innerWidth * .3; if (left) i = Math.max(0, i - 1); else if (i < slides.length - 1) i++; else { ov.remove(); return; } paint();
+    });
+    paint();
+  }
+  ACT.review = function () { openReview(); };
+
+  /* ---------- Take it further (replaces the first version) ---------- */
+  function takeItFurther() {
+    return "<div class='fw-card'><h2>Take it further</h2><p class='hint'>Get a second opinion from Claude, hand your numbers to a professional, or share your progress.</p><div class='fw-acts'><button class='fw-btn' data-a='ask'>Ask Claude</button><button class='fw-btn g' data-a='cpa'>Save a CPA summary</button><button class='fw-btn g' data-a='shareprog'>Share progress</button></div></div>";
+  }
+
+  /* ---------- smart nudges: one gentle suggestion, only when you open Wealth ---------- */
+  function nudgeOnce() {
+    if (!host || document.querySelector(".fv-sheet,.fw-rev")) return;
+    var m = gm(), today = new Date().toISOString().slice(0, 10); if (m.wNudge === today) return;
+    var p = pForEngine(), L = p.salary ? E.levers(p) : { list: [] }, d = data() || {}, ru = runway(d), pick = null, now = new Date(), yeDays = Math.ceil((new Date(now.getFullYear(), 11, 31) - now) / 864e5);
+    var match = L.list.filter(function (x) { return x.match; })[0];
+    if (match) pick = ["Your 401(k) match is about " + fmt(match.saves) + " a year you're not collecting. Want to look?", "Show me", "tax"];
+    else if (W.lifeDeps && !num(W.lifeCover)) pick = ["Someone relies on your income and there's no life insurance listed. Take a look?", "Show me", "protect"];
+    else if (ru && ru.months < 3) pick = ["Your emergency fund covers " + ru.months.toFixed(1) + " months. A goal ring can help you build it.", "Set a goal", "goals"];
+    else if (yeDays <= 75 && L.list[0]) pick = ["About " + yeDays + " days left in the year. Maxing your 401(k) could still cut about " + fmt(L.list[0].saves) + " of tax.", "Show me", "tax"];
+    if (!pick) return; sm({ wNudge: today });
+    toast(pick[0], pick[1], function () { tab = pick[2]; sm({ wTab: tab }); render(); }, "n");
+  }
+  AFTER.push(function (still) { if (!still && !nudgeOnce._t) { nudgeOnce._t = setTimeout(function () { nudgeOnce._t = 0; if (onWealth()) nudgeOnce(); }, 2200); } });
+
 })();
 
 /* FavFI polish: splash, undo, swipe, milestones, recap, tour */
@@ -2132,6 +2480,7 @@ var FavFIEngine = (function () {
 
   /* ---- confetti ---- */
   function confetti() {
+    haptic("big");
     if (gm().confetti === false || gm().calm === true) return;
     var cols = ["#5b8a6e", "#d9a441", "#c9735b", "#8aa7c4", "#b79ad0"];
     for (var i = 0; i < 40; i++) {
@@ -2366,29 +2715,44 @@ var FavFIEngine = (function () {
   /* ---- delight: sounds, haptics, streak, net-worth chart, cleared-card celebration, share image ---- */
   var actx = null;
   function soundOn() { return !!gm().sound; }
-  function chime(kind) {
-    if (!soundOn()) return;
+  function playTone(theme, f, t0, kind) {
+    var o = actx.createOscillator(), g = actx.createGain(), peak = kind === "tap" ? 0.05 : 0.09, dur = kind === "big" ? 0.7 : 0.35;
+    if (theme === "wood") {
+      o.type = "sine"; o.frequency.setValueAtTime(f * 1.6, t0); o.frequency.exponentialRampToValueAtTime(f * 0.55, t0 + 0.09);
+      g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(peak * 1.6, t0 + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.16);
+      o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0 + 0.2); return;
+    }
+    if (theme === "glass") {
+      [[1, 1, 1], [2.76, 0.35, 0.6], [5.4, 0.12, 0.35]].forEach(function (p) {
+        var oo = actx.createOscillator(), gg = actx.createGain(); oo.type = "sine"; oo.frequency.value = f * 1.5 * p[0];
+        gg.gain.setValueAtTime(0.0001, t0); gg.gain.exponentialRampToValueAtTime(peak * p[1], t0 + 0.008); gg.gain.exponentialRampToValueAtTime(0.0001, t0 + dur * 1.5 * p[2]);
+        oo.connect(gg); gg.connect(actx.destination); oo.start(t0); oo.stop(t0 + dur * 1.6);
+      }); return;
+    }
+    o.type = "sine"; o.frequency.value = f; o.connect(g); g.connect(actx.destination);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(peak, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.start(t0); o.stop(t0 + 0.8);
+  }
+  function chime(kind, force) {
+    if (!soundOn() && !force) return;
     try {
       actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-      var notes = kind === "big" ? [523.25, 659.25, 783.99, 1046.5] : kind === "tap" ? [880] : [659.25, 880];
-      notes.forEach(function (f, i) {
-        var o = actx.createOscillator(), g = actx.createGain(), t0 = actx.currentTime + i * 0.09;
-        o.type = "sine"; o.frequency.value = f; o.connect(g); g.connect(actx.destination);
-        g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(kind === "tap" ? 0.05 : 0.09, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + (kind === "big" ? 0.7 : 0.35));
-        o.start(t0); o.stop(t0 + 0.8);
-      });
+      if (actx.state === "suspended") actx.resume();
+      var theme = gm().soundTheme || "soft", notes = kind === "big" ? [523.25, 659.25, 783.99, 1046.5] : kind === "tap" ? [880] : [659.25, 880];
+      notes.forEach(function (f, i) { playTone(theme, f, actx.currentTime + i * (theme === "wood" ? 0.11 : 0.09), kind); });
     } catch (e) {}
   }
   var hapLabel = null;
-  function haptic() {
+  function haptic(kind) {
     if (gm().haptics === false) return;
-    try { if (navigator.vibrate && navigator.vibrate(10)) return; } catch (e) {}
+    var big = kind === "big";
+    try { if (navigator.vibrate && navigator.vibrate(big ? [10, 50, 10, 50, 26] : 10)) return; } catch (e) {}
     try { /* iOS 17.4+ Safari: toggling a switch input gives a light tap */
       if (!hapLabel) {
         hapLabel = el("label"); hapLabel.style.cssText = "position:fixed;left:-100px;top:0;opacity:0;pointer-events:none";
         var i = el("input"); i.type = "checkbox"; i.setAttribute("switch", ""); hapLabel.appendChild(i); document.body.appendChild(hapLabel);
       }
-      hapLabel.click();
+      hapLabel.click(); if (big) { setTimeout(function () { hapLabel.click(); }, 90); setTimeout(function () { hapLabel.click(); }, 200); }
     } catch (e) {}
   }
   function monthLabel(m) { var p = m.split("-"); return new Date(+p[0], +p[1] - 1, 1).toLocaleString(undefined, { month: "short" }); }
@@ -2485,6 +2849,7 @@ var FavFIEngine = (function () {
   var PREFS = [
     ["Feedback", [
       ["sound", "Sounds", "Soft chimes when you pay a bill or hit a milestone", false],
+      ["soundTheme", "Sound style", "Soft chimes, glassy bells or warm wood taps", "soft", "choice", [["soft", "Soft"], ["glass", "Glass"], ["wood", "Wood"]]],
       ["haptics", "Haptic taps", "A light tap on key actions (iPad iOS 18+, best effort)", true],
       ["confetti", "Celebrations", "Confetti when you reach a milestone or pay off a debt", true]]],
     ["Look & motion", [
@@ -2538,6 +2903,15 @@ var FavFIEngine = (function () {
       g[1].forEach(function (r) {
         var row = el("div", "fv-pr");
         row.innerHTML = "<div class='fv-pt'><b>" + r[1] + "</b><span>" + r[2] + "</span></div>";
+        if (r[4] === "choice") {
+          var seg = el("div", "fv-seg"); seg.setAttribute("role", "group");
+          r[5].forEach(function (o) {
+            var bt = el("button", null, o[1]); bt.type = "button"; bt.setAttribute("aria-pressed", (gm()[r[0]] || r[3]) === o[0] ? "true" : "false");
+            bt.onclick = function () { var oo = {}; oo[r[0]] = o[0]; sm(oo); [].forEach.call(seg.children, function (c) { c.setAttribute("aria-pressed", "false"); }); bt.setAttribute("aria-pressed", "true"); chime("good", true); };
+            seg.appendChild(bt);
+          });
+          row.appendChild(seg); sec.appendChild(row); return;
+        }
         var sw = el("button", "fv-sw"); sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-label", r[1]); sw.innerHTML = "<i></i>";
         function paint() { sw.setAttribute("aria-checked", prefOn(r[0]) ? "true" : "false"); }
         paint();
@@ -2560,6 +2934,7 @@ var FavFIEngine = (function () {
     "#fv-prefs{margin-top:6px}.fv-ps{margin-top:14px}.fv-ps h4{font:600 11px system-ui!important;letter-spacing:.08em!important;text-transform:uppercase;color:hsl(var(--muted-foreground));margin:0 0 2px}" +
     ".fv-pr{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid hsl(var(--border)/.5)}.fv-ps .fv-pr:last-child{border-bottom:0}" +
     ".fv-pt{min-width:0}.fv-pt b{display:block;font:500 14px system-ui;color:hsl(var(--foreground))}.fv-pt span{display:block;font:400 12px/1.35 system-ui;color:hsl(var(--muted-foreground));margin-top:1px}" +
+    ".fv-seg{display:inline-flex;padding:3px;border-radius:99px;background:hsl(var(--muted));gap:2px;flex:none}.fv-seg button{border:0;background:none;padding:6px 12px;border-radius:99px;font:500 13px system-ui;color:hsl(var(--muted-foreground));min-height:32px}.fv-seg button[aria-pressed=true]{background:hsl(var(--card));color:hsl(var(--foreground));box-shadow:0 1px 3px rgba(60,45,20,.15)}" +
     ".fv-sw{position:relative;flex:none;width:42px;height:26px;border-radius:99px;border:0;background:hsl(var(--muted-foreground)/.3);transition:background-color .25s;padding:0}.fv-sw i{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .25s cubic-bezier(.3,1.4,.5,1)}" +
     ".fv-sw[aria-checked=true]{background:hsl(var(--primary))}.fv-sw[aria-checked=true] i{transform:translateX(16px)}" +
     "html.fv-notilt [style*='perspective']{perspective:none!important}html.fv-notilt [style*='perspective']>div{transform:none!important;transform-style:flat!important}html.fv-notilt .bg-card.rounded-3xl>div.absolute.pointer-events-none{display:none!important}" +
@@ -2573,6 +2948,109 @@ var FavFIEngine = (function () {
   setInterval(function () { try { window.FavFIData.snapshotNow(); } catch (e) {} checkCleared(); nwCard(); }, 2500);
   try { window.FavFIData.snapshotNow(); } catch (e) {}
   setInterval(countUp, 600); setTimeout(function () { tour(); checkMilestone(); checkRecap(); }, 1800);
+})();
+
+/* FavFI delight pack (app-wide): daily line, quick-add button, friendly empty states. Everything stays on this device. */
+(function () {
+  "use strict";
+  var META = "favfi:meta:v1";
+  function gm() { try { return JSON.parse(localStorage.getItem(META) || "{}") || {}; } catch (e) { return {}; } }
+  function el(tag, cls, html) { var n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function data() { try { return JSON.parse(window.FavFIData.exportJson()).data; } catch (e) { return null; } }
+  function fmt(n) { return (n < 0 ? "-$" : "$") + Math.round(Math.abs(n)).toLocaleString("en-US"); }
+  function route() { return location.hash.replace(/^#/, "") || "/"; }
+
+  var css = el("style");
+  css.textContent =
+    "#fv-qa{position:fixed;right:16px;bottom:calc(140px + env(safe-area-inset-bottom));z-index:2147481900;width:54px;height:54px;border-radius:50%;border:0;background:linear-gradient(145deg,hsl(152 34% 44%),hsl(152 36% 32%));color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 22px rgba(44,74,59,.38),0 2px 6px rgba(44,74,59,.25),inset 0 1px 0 rgba(255,255,255,.3);transition:transform .25s cubic-bezier(.3,1.4,.5,1),opacity .25s;animation:fvQaIn .6s cubic-bezier(.2,.9,.2,1.2) backwards .4s}" +
+    "#fv-qa:hover{transform:scale(1.07)}#fv-qa:active{transform:scale(.92) rotate(90deg)}#fv-qa svg{width:24px;height:24px}#fv-qa[hidden]{display:none}@keyframes fvQaIn{from{transform:scale(0) rotate(-90deg);opacity:0}to{transform:none;opacity:1}}" +
+    "@media (min-width:768px){#fv-qa{right:28px;bottom:28px;width:58px;height:58px}}" +
+    ".fv-qs h3{margin:0 0 12px}.fv-qs .amt{display:flex;align-items:baseline;gap:6px;justify-content:center;padding:6px 0 14px}.fv-qs .amt span{font:500 34px var(--app-font-serif);color:hsl(var(--muted-foreground))}.fv-qs .amt input{width:60%;max-width:240px;border:0;background:transparent;text-align:center;font:500 52px var(--app-font-serif);color:hsl(var(--foreground));outline:0;min-height:60px;border-bottom:2px solid hsl(var(--border));transition:border-color .2s}.fv-qs .amt input:focus{border-color:hsl(var(--primary))}" +
+    ".fv-qs .ch{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px}.fv-qs .ch button{border:1px solid hsl(var(--border));background:hsl(var(--card));border-radius:99px;padding:8px 14px;min-height:38px;font:500 13.5px system-ui;color:hsl(var(--foreground));transition:all .2s}.fv-qs .ch button[aria-pressed=true]{background:hsl(var(--primary)/.14);border-color:hsl(var(--primary)/.5);color:hsl(var(--primary))}.fv-qs .ch button:active{transform:scale(.95)}" +
+    ".fv-qs .nm{width:100%;box-sizing:border-box;border:0;border-radius:14px;background:hsl(var(--muted)/.5);padding:0 14px;min-height:48px;font:500 16px system-ui;color:hsl(var(--foreground));outline:0;border:1px solid transparent}.fv-qs .nm:focus{border-color:hsl(var(--primary)/.5);background:hsl(var(--card))}" +
+    ".fv-ok{display:flex;flex-direction:column;align-items:center;gap:10px;padding:26px 0 18px;animation:fvIn .3s ease both}.fv-ok svg{width:76px;height:76px}.fv-ok circle{fill:hsl(var(--primary)/.14);stroke:none;transform-origin:center;animation:fvPopC .5s cubic-bezier(.3,1.5,.5,1) both}.fv-ok path{fill:none;stroke:hsl(var(--primary));stroke-width:5;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:50;stroke-dashoffset:50;animation:fvDraw .5s ease .25s forwards}.fv-ok b{font:500 20px var(--app-font-serif)}" +
+    "@keyframes fvDraw{to{stroke-dashoffset:0}}@keyframes fvPopC{from{transform:scale(0)}to{transform:scale(1)}}" +
+    ".fv-empty{text-align:center;padding:14px 0 6px;animation:fvIn .5s ease both}.fv-empty svg{width:150px;height:auto;max-width:60%}.fv-empty p{margin:6px 0 0;font-size:13.5px;color:hsl(var(--muted-foreground))}" +
+    "#fv-dl{transition:opacity .4s}";
+  document.head.appendChild(css);
+
+  /* ---------- 1. a daily line on the dashboard ---------- */
+  function dayOfYear() { var n = new Date(); return Math.floor((n - new Date(n.getFullYear(), 0, 0)) / 864e5); }
+  function dailyLines() {
+    var d = data(), out = []; if (!d) return out;
+    var cards = d.creditCards || [], snaps = d.snapshots || [], by = {}; snaps.forEach(function (x) { by[x.snapshotMonth] = (by[x.snapshotMonth] || 0) + x.balance; });
+    var ms = Object.keys(by).sort(), cur = cards.reduce(function (a, c) { return a + (+c.balance || 0); }, 0);
+    if (ms.length && by[ms[0]] - cur > 1) out.push("You're " + fmt(by[ms[0]] - cur) + " closer to debt-free since you started.");
+    var set = {}; (d.paidMonths || []).forEach(function (x) { set[x.month] = 1; });
+    var n = new Date(), k = n.getFullYear() * 12 + n.getMonth(), streak = 0, key = function (v) { return Math.floor(v / 12) + "-" + ("0" + (v % 12 + 1)).slice(-2); }; if (!set[key(k)]) k--;
+    while (set[key(k)]) { streak++; k--; }
+    if (streak >= 2) out.push(streak + " months in a row with every bill paid. Keep it going.");
+    var today = n.getDate(), soon = (d.expenses || []).filter(function (e) { return e.paymentStatus !== "paid" && e.dueDay && e.dueDay >= today && e.dueDay - today <= 5; }).sort(function (a, b) { return a.dueDay - b.dueDay; })[0];
+    if (soon) { var dd = soon.dueDay - today; out.push(soon.name + " is due " + (dd === 0 ? "today." : dd === 1 ? "tomorrow." : "in " + dd + " days.")); }
+    var liquid = (d.assets || []).filter(function (a) { return /sav|check|cash/i.test(a.type || a.name || ""); }).reduce(function (s, a) { return s + (+a.value || 0); }, 0), mo = (d.expenses || []).reduce(function (s, x) { return s + (+x.amount || 0); }, 0);
+    if (liquid > 0 && mo > 0) out.push("Your savings cover about " + (liquid / mo).toFixed(1) + " months of expenses.");
+    try { var w = window.FavFIData.getWealth() || {}, g = (w.goals || [])[0]; if (g && +g.target > 0 && g.kind !== "efund") out.push("Your " + g.name + " goal is " + Math.round(Math.min(1, (+g.saved || 0) / +g.target) * 100) + "% there."); } catch (e) {}
+    return out;
+  }
+  var lastLine = "";
+  function dailyLine() {
+    if (route() !== "/") return;
+    var p = [].slice.call(document.querySelectorAll("header p")).filter(function (x) { return x.getAttribute("data-fv-dl") || /Every payment you make moves the needle/.test(x.textContent); })[0];
+    if (!p) return;
+    var lines = dailyLines(); if (!lines.length) return;
+    var line = lines[dayOfYear() % lines.length]; if (p.textContent === line || lastLine === line && p.getAttribute("data-fv-dl")) return;
+    lastLine = line; p.setAttribute("data-fv-dl", "1"); p.id = "fv-dl"; p.style.opacity = "0";
+    setTimeout(function () { p.textContent = line; p.style.opacity = "1"; }, 220);
+  }
+  setInterval(dailyLine, 1500);
+
+  /* ---------- 2. quick-add button: log an expense in a few taps ---------- */
+  var CATS = ["Housing", "Food", "Transport", "Car", "Student Loans", "Subscriptions", "Utilities", "Health", "Personal", "Other"], fab = null, qaOpen = false;
+  function fx(n) { var f = window.FavFIFx; if (!f) return; try { if (n === "ok") { f.haptic(); f.chime("good"); } } catch (e) {} }
+  function showFab() {
+    var r = route(), show = (r === "/" || r === "/budget") && !qaOpen && !document.getElementById("favfi-lock");
+    if (show && !fab) { fab = el("button"); fab.id = "fv-qa"; fab.type = "button"; fab.setAttribute("aria-label", "Add an expense"); fab.innerHTML = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.6' stroke-linecap='round'><path d='M12 5v14M5 12h14'/></svg>"; fab.onclick = openQuickAdd; document.body.appendChild(fab); }
+    if (fab) fab.hidden = !show;
+  }
+  setInterval(showFab, 600); addEventListener("hashchange", showFab);
+  function openQuickAdd() {
+    qaOpen = true; if (fab) fab.hidden = true; var cat = "Food", fixed = false;
+    var s = el("div", "fv-sheet"), c = el("div", "fv-card fv-qs"); c.style.maxHeight = "92vh"; c.style.overflow = "auto"; s.appendChild(c);
+    c.innerHTML = "<h3>Add an expense</h3><div class='amt'><span>$</span><input id='qa-amt' inputmode='decimal' placeholder='0' autocomplete='off' aria-label='Amount'></div>" +
+      "<input class='nm' id='qa-name' type='text' placeholder='What was it for?' autocomplete='off' maxlength='40'><div class='ch' id='qa-cats'>" + CATS.map(function (x) { return "<button type='button' data-c='" + x + "' aria-pressed='" + (x === cat) + "'>" + x + "</button>"; }).join("") + "</div>" +
+      "<div class='ch'><button type='button' id='qa-fix' aria-pressed='false'>Repeats every month</button></div><div class='row'><button class='fv-btn g' id='qa-x'>Cancel</button><button class='fv-btn' id='qa-ok'>Add</button></div>";
+    document.body.appendChild(s);
+    function close() { qaOpen = false; s.remove(); showFab(); }
+    s.addEventListener("click", function (e) { if (e.target === s) close(); });
+    c.querySelector("#qa-x").onclick = close;
+    c.querySelectorAll("#qa-cats button").forEach(function (b) { b.onclick = function () { cat = b.getAttribute("data-c"); c.querySelectorAll("#qa-cats button").forEach(function (o) { o.setAttribute("aria-pressed", o === b ? "true" : "false"); }); }; });
+    c.querySelector("#qa-fix").onclick = function (e) { fixed = !fixed; e.currentTarget.setAttribute("aria-pressed", fixed ? "true" : "false"); };
+    c.querySelector("#qa-ok").onclick = function () {
+      var amt = parseFloat(c.querySelector("#qa-amt").value.replace(/[^0-9.]/g, "")); if (!(amt > 0)) { c.querySelector("#qa-amt").focus(); return; }
+      var name = (c.querySelector("#qa-name").value || "").trim() || cat, btn = c.querySelector("#qa-ok"); btn.disabled = true;
+      fetch("/api/expenses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name, amount: amt, category: cat, isFixed: fixed }) }).then(function (r) {
+        if (!r.ok) throw new Error("x");
+        try { window.__qc && window.__qc.invalidateQueries(); } catch (e) {}
+        c.innerHTML = "<div class='fv-ok'><svg viewBox='0 0 76 76'><circle cx='38' cy='38' r='34'/><path d='M23 39l11 11 20-23'/></svg><b>Added</b></div>"; fx("ok");
+        try { var rc = c.querySelector("svg").getBoundingClientRect(); window.FavFIFx && window.FavFIFx.sparkle(rc.left + rc.width / 2, rc.top + rc.height / 2); } catch (e) {}
+        setTimeout(close, 1100);
+      }).catch(function () { btn.disabled = false; btn.textContent = "Try again"; });
+    };
+    setTimeout(function () { try { c.querySelector("#qa-amt").focus(); } catch (e) {} }, 120);
+  }
+
+  /* ---------- 3. friendly empty states ---------- */
+  var ART = "<svg viewBox='0 0 160 110' aria-hidden='true'><ellipse cx='80' cy='96' rx='70' ry='10' fill='hsl(152 25% 88%)'/><path d='M10 96 Q50 58 90 90 Q120 70 150 96Z' fill='hsl(152 28% 78%)'/><path d='M80 92 C80 70 80 58 80 46' stroke='hsl(152 35% 34%)' stroke-width='4' stroke-linecap='round' fill='none'/><path d='M80 62 C64 62 56 52 56 40 C70 40 80 48 80 62Z' fill='hsl(152 38% 46%)'/><path d='M80 54 C94 54 104 44 104 32 C90 32 80 40 80 54Z' fill='hsl(152 42% 56%)'/><circle cx='122' cy='28' r='9' fill='#e8c068'/></svg>";
+  function emptyStates() {
+    var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, { acceptNode: function (n) { return /^\s*No expenses (yet|tracked yet\.?|to budget yet)\s*$/.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT; } }), n, found = [];
+    while ((n = w.nextNode())) found.push(n.parentElement);
+    found.forEach(function (p) {
+      if (!p || p.getAttribute("data-fv-e")) return; p.setAttribute("data-fv-e", "1");
+      var box = el("div", "fv-empty", ART + "<p>Nothing here yet. Tap the + button to add your first one.</p>"); p.insertAdjacentElement("beforebegin", box);
+    });
+  }
+  setInterval(emptyStates, 1500);
 })();
 </script>
 <script>(function(){try{if("serviceWorker"in navigator&&/^https?:$/.test(location.protocol)){addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{scope:"./"}).catch(function(){})})}}catch(e){}})();</script>
