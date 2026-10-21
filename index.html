@@ -100,6 +100,23 @@ div.rounded-3xl.touch-pan-y{box-shadow:none!important;background:transparent!imp
 /* performance: big backdrop blurs over static backgrounds cost GPU time on every scroll frame for no visible gain */
 nav.fixed,div.shrink-0.relative.z-10{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
 nav.md\:hidden{backdrop-filter:blur(10px)!important;-webkit-backdrop-filter:blur(10px)!important}
+
+/* charts: calm hover cursor, readable tooltip in light and dark, focus the bar you're on */
+.recharts-rectangle.recharts-tooltip-cursor{fill:hsl(var(--foreground)/.05)!important;rx:10px;ry:10px}
+path.recharts-curve.recharts-tooltip-cursor,line.recharts-tooltip-cursor{stroke:hsl(var(--primary)/.45)!important;stroke-dasharray:3 4}
+.recharts-tooltip-wrapper{transition:transform .16s cubic-bezier(.2,.8,.2,1)!important;z-index:5}
+.recharts-default-tooltip{background:hsl(var(--popover))!important;border:1px solid hsl(var(--border))!important;border-radius:16px!important;padding:10px 14px 11px!important;box-shadow:0 12px 30px rgba(40,30,10,.18),0 2px 6px rgba(40,30,10,.08)!important;min-width:96px}
+html.dark .recharts-default-tooltip{box-shadow:0 14px 34px rgba(0,0,0,.5),0 2px 6px rgba(0,0,0,.3)!important}
+.recharts-tooltip-label{font:600 10.5px system-ui!important;letter-spacing:.09em;text-transform:uppercase;color:hsl(var(--muted-foreground))!important;margin:0 0 3px!important}
+.recharts-tooltip-item-list{margin:0!important;padding:0!important;list-style:none}
+.recharts-tooltip-item{padding:0!important;color:hsl(var(--foreground))!important;font:500 21px/1.2 var(--app-font-serif)!important}
+.recharts-tooltip-item-name,.recharts-tooltip-item-separator{display:none!important}
+.recharts-bar-rectangle{transition:opacity .25s,filter .25s,transform .3s cubic-bezier(.2,.9,.2,1.2);transform-box:fill-box;transform-origin:50% 100%}
+html.dark .recharts-bar-rectangle path{filter:saturate(.8) brightness(.95)}
+.fv-bars-hover .recharts-bar-rectangle:not(.fv-bar-on){opacity:.4}
+.fv-bar-on{filter:drop-shadow(0 8px 14px rgba(0,0,0,.28));transform:translateY(-3px) scaleY(1.015)}
+html.dark .fv-bar-on path{filter:saturate(1) brightness(1.08)!important}
+html.fv-calm .recharts-bar-rectangle,html.fv-calm .recharts-tooltip-wrapper{transition:none!important}
 </style>
 </head>
 <body>
@@ -3053,6 +3070,24 @@ var FavFIEngine = (function () {
     });
   }
   setInterval(emptyStates, 1500);
+})();
+
+/* bar charts: spotlight the bar under your finger or cursor */
+(function () {
+  var cur = null, wrap = null;
+  function clear() { if (cur) cur.classList.remove("fv-bar-on"); if (wrap) wrap.classList.remove("fv-bars-hover"); cur = null; wrap = null; }
+  document.addEventListener("pointermove", function (e) {
+    var w = e.target.closest && e.target.closest(".recharts-wrapper");
+    if (!w) { clear(); return; }
+    var bars = w.querySelectorAll(".recharts-bar-rectangle"); if (!bars.length) { clear(); return; }
+    var best = null, bd = 1e9;
+    for (var i = 0; i < bars.length; i++) { var r = bars[i].getBoundingClientRect(), d = Math.abs(e.clientX - (r.left + r.width / 2)); if (d < bd) { bd = d; best = bars[i]; } }
+    var rr = best.getBoundingClientRect(); if (bd > rr.width * 1.4) { clear(); return; }
+    if (best !== cur) { if (cur) cur.classList.remove("fv-bar-on"); best.classList.add("fv-bar-on"); cur = best; }
+    if (wrap !== w) { if (wrap) wrap.classList.remove("fv-bars-hover"); w.classList.add("fv-bars-hover"); wrap = w; }
+  }, { passive: true });
+  document.addEventListener("pointerleave", clear, true);
+  document.addEventListener("pointerup", function (e) { if (e.pointerType !== "mouse") setTimeout(clear, 600); }, true);
 })();
 
 /* FavFI Home Screen card: a widget-shaped image you can save to Photos and show with the Photos widget.
