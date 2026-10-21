@@ -117,6 +117,21 @@ html.dark .recharts-bar-rectangle path{filter:saturate(.8) brightness(.95)}
 .fv-bar-on{filter:drop-shadow(0 8px 14px rgba(0,0,0,.28));transform:translateY(-3px) scaleY(1.015)}
 html.dark .fv-bar-on path{filter:saturate(1) brightness(1.08)!important}
 html.fv-calm .recharts-bar-rectangle,html.fv-calm .recharts-tooltip-wrapper{transition:none!important}
+
+/* donut spotlight, softer dark fills, matching custom tooltip */
+.recharts-pie-sector{transition:opacity .25s,transform .35s cubic-bezier(.2,.9,.2,1.2),filter .25s;cursor:pointer}
+html.dark .recharts-pie-sector path{filter:saturate(.8) brightness(.95)}
+.fv-pie-hover .recharts-pie-sector:not(.fv-sec-on){opacity:.38}
+.fv-sec-on{filter:drop-shadow(0 6px 10px rgba(0,0,0,.35))}
+html.dark .fv-sec-on path{filter:saturate(1) brightness(1.08)!important}
+.fv-pie-hover .recharts-tooltip-wrapper{display:none}
+.fv-cswap{transition:opacity .18s}
+html.dark .recharts-area-area{filter:saturate(.85)}
+.recharts-tooltip-wrapper>div.rounded-xl{background:hsl(var(--popover))!important;border:1px solid hsl(var(--border))!important;border-radius:16px!important;box-shadow:0 12px 30px rgba(40,30,10,.18),0 2px 6px rgba(40,30,10,.08)!important;padding:10px 14px 11px!important}
+html.dark .recharts-tooltip-wrapper>div.rounded-xl{box-shadow:0 14px 34px rgba(0,0,0,.5),0 2px 6px rgba(0,0,0,.3)!important}
+.recharts-tooltip-wrapper>div.rounded-xl>p:first-child{font:600 10.5px system-ui!important;letter-spacing:.09em;text-transform:uppercase}
+.recharts-tooltip-wrapper>div.rounded-xl .font-medium.text-foreground{font:500 19px/1.2 var(--app-font-serif)!important}
+html.fv-calm .recharts-pie-sector{transition:none!important}
 </style>
 </head>
 <body>
@@ -3088,6 +3103,55 @@ var FavFIEngine = (function () {
   }, { passive: true });
   document.addEventListener("pointerleave", clear, true);
   document.addEventListener("pointerup", function (e) { if (e.pointerType !== "mouse") setTimeout(clear, 600); }, true);
+})();
+
+/* donut: spotlight a slice, show its amount in the centre; tidy bare-number tooltip labels */
+(function () {
+  var on = null, wrap = null, saved = null, cEls = null;
+  function centre(w) {
+    var box = w.parentElement && w.parentElement.parentElement; if (!box) return null;
+    var els = [].slice.call(box.querySelectorAll("*")).filter(function (e) { return !e.closest(".recharts-wrapper") && e.children.length === 0 && e.textContent.trim(); });
+    return els.length >= 2 ? els.slice(0, 2) : null;
+  }
+  function restore() {
+    if (on) { on.classList.remove("fv-sec-on"); on.style.transform = ""; }
+    if (wrap) wrap.classList.remove("fv-pie-hover");
+    if (cEls && saved) { cEls[0].textContent = saved[0]; cEls[1].textContent = saved[1]; }
+    on = wrap = cEls = saved = null;
+  }
+  document.addEventListener("pointermove", function (e) {
+    var s = e.target.closest && e.target.closest(".recharts-pie-sector");
+    if (!s) { if (on) restore(); return; }
+    if (s === on) return;
+    var w = s.closest(".recharts-wrapper");
+    if (on) { on.classList.remove("fv-sec-on"); on.style.transform = ""; }
+    on = s; s.classList.add("fv-sec-on");
+    var p = s.querySelector("path"), bb = p.getBBox(), svg = w.querySelector("svg"), vb = svg.viewBox.baseVal, cx = vb.width / 2, cy = vb.height / 2;
+    var dx = bb.x + bb.width / 2 - cx, dy = bb.y + bb.height / 2 - cy, l = Math.hypot(dx, dy) || 1;
+    s.style.transform = "translate(" + (dx / l * 7).toFixed(1) + "px," + (dy / l * 7).toFixed(1) + "px)";
+    if (wrap !== w) { w.classList.add("fv-pie-hover"); wrap = w; }
+    var tries = 0;
+    (function tick() {
+      if (on !== s) return;
+      var t = w.querySelector(".recharts-tooltip-item"); if (!t) { if (tries++ < 8) setTimeout(tick, 40); return; }
+      var m = t.textContent.split(":"); var nm = (m[0] || "").trim(), val = (m[1] || "").trim();
+      if (/^\d+$/.test(nm)) {
+        var card = w.closest("[class*=rounded]"), lv = [].slice.call(card.querySelectorAll("*")).filter(function (x) { return !x.closest(".recharts-wrapper") && x.children.length === 0 && x.textContent.trim(); }), nn = "";
+        for (var k = 1; k < lv.length; k++) if (lv[k].textContent.trim() === val && !lv[k].closest(".relative.h-52")) { nn = lv[k - 1].textContent.trim(); break; }
+        nm = nn;
+      }
+      var c = centre(w); if (!c || !val) return;
+      if (!saved) { cEls = c; saved = [c[0].textContent, c[1].textContent]; }
+      c[0].textContent = val; c[1].textContent = nm.toUpperCase();
+    })();
+  }, { passive: true });
+  document.addEventListener("pointerleave", function () { restore(); }, true);
+  document.addEventListener("pointerup", function (e) { if (e.pointerType !== "mouse") setTimeout(restore, 900); }, true);
+  var mo = new MutationObserver(function () {
+    var ls = document.querySelectorAll(".recharts-tooltip-label");
+    for (var i = 0; i < ls.length; i++) { var t = ls[i].textContent; if (/^\d+$/.test(t)) ls[i].textContent = t === "0" ? "Today" : "Month " + t; }
+  });
+  mo.observe(document.body, { childList: true, subtree: true, characterData: true });
 })();
 
 /* FavFI Home Screen card: a widget-shaped image you can save to Photos and show with the Photos widget.
