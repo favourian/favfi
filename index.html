@@ -993,7 +993,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     });
   }
   function exportBackup() {
-    var name = "FavFI-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+    var name = "FavFI-backup.json"; /* same name every time so Files offers to Replace instead of piling up copies */
     return saveFile([{ name: name, type: "application/json", text: FavFIData.exportJson() }], "FavFI backup").then(function (r) {
       if (r === "shared" || r === "downloaded") markBackup();
       return { result: r, name: name };
@@ -1009,10 +1009,10 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     return Promise.all([getJson("/api/credit-cards"), getJson("/api/assets"), getJson("/api/expenses"), getJson("/api/payment-logs")]).then(function (a) {
       var T = "text/csv";
       var files = [
-        { name: "FavFI-debts-" + stamp + ".csv", type: T, text: csvOf(["Name", "Balance", "APR %", "Minimum payment", "Credit limit"], a[0].map(function (c) { return [c.name, c.balance, c.apr, c.minimumPayment, c.creditLimit]; })) },
-        { name: "FavFI-assets-" + stamp + ".csv", type: T, text: csvOf(["Name", "Type", "Value"], a[1].map(function (x) { return [x.name, x.type, x.value]; })) },
-        { name: "FavFI-expenses-" + stamp + ".csv", type: T, text: csvOf(["Name", "Category", "Amount", "Fixed", "Due day", "Status"], a[2].map(function (x) { return [x.name, x.category, x.amount, x.isFixed ? "yes" : "no", x.dueDay, x.paymentStatus]; })) },
-        { name: "FavFI-payments-" + stamp + ".csv", type: T, text: csvOf(["Date", "Card", "Amount paid", "Suggested", "Balance before", "Balance after"], a[3].map(function (x) { return [x.paidAt, x.creditCardName, x.amountPaid, x.suggestedAmount, x.balanceBefore, x.balanceAfter]; })) }
+        { name: "FavFI-debts.csv", type: T, text: csvOf(["Name", "Balance", "APR %", "Minimum payment", "Credit limit"], a[0].map(function (c) { return [c.name, c.balance, c.apr, c.minimumPayment, c.creditLimit]; })) },
+        { name: "FavFI-assets.csv", type: T, text: csvOf(["Name", "Type", "Value"], a[1].map(function (x) { return [x.name, x.type, x.value]; })) },
+        { name: "FavFI-expenses.csv", type: T, text: csvOf(["Name", "Category", "Amount", "Fixed", "Due day", "Status"], a[2].map(function (x) { return [x.name, x.category, x.amount, x.isFixed ? "yes" : "no", x.dueDay, x.paymentStatus]; })) },
+        { name: "FavFI-payments.csv", type: T, text: csvOf(["Date", "Card", "Amount paid", "Suggested", "Balance before", "Balance after"], a[3].map(function (x) { return [x.paidAt, x.creditCardName, x.amountPaid, x.suggestedAmount, x.balanceBefore, x.balanceAfter]; })) }
       ];
       return saveFile(files, "FavFI spreadsheets");
     });
@@ -1172,7 +1172,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     var bExport = el("button", primary, "Save backup file");
     bExport.onclick = function () {
       exportBackup().then(function (r) {
-        if (r.result === "shared") say("Backup ready. Keep it somewhere safe, like Files or Notes.", true);
+        if (r.result === "shared") say("Backup ready. In Files, pick the same folder as last time and tap Replace so you only keep one copy.", true);
         else if (r.result === "downloaded") say("Backup saved as " + r.name + ".", true);
         else if (r.result === "cancelled") say("Cancelled.");
         else say("Couldn't create the backup.", false);
