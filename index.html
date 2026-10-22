@@ -58,8 +58,8 @@ nav.fixed a svg{opacity:.7}
 
 /* navigation: quiet ink instead of purple, active item keeps the green */
 nav.fixed span.font-semibold.text-lg{color:hsl(var(--foreground))!important}
-nav a>div:not(:has(>div.absolute)),nav a>div:not(:has(>div.absolute)) *{color:hsl(var(--muted-foreground))!important}
-nav a>div:not(:has(>div.absolute)):hover,nav a>div:not(:has(>div.absolute)):hover *{color:hsl(var(--foreground))!important}
+nav a>div.fv-nvi,nav a>div.fv-nvi *{color:hsl(var(--muted-foreground))!important}
+nav a>div.fv-nvi:hover,nav a>div.fv-nvi:hover *{color:hsl(var(--foreground))!important}
 nav.fixed .rounded-full.border-2{border-color:hsl(var(--sidebar))!important}
 nav.fixed div.mt-2.opacity-30,nav.fixed div.mt-2.opacity-30 *{color:hsl(var(--muted-foreground))!important}
 nav.md\:hidden{background:hsl(var(--card)/.94)!important;border:0!important;border-top:1px solid hsl(var(--border))!important;box-shadow:0 -6px 24px rgba(70,50,20,.06)!important;backdrop-filter:blur(24px) saturate(1.2)}
@@ -74,16 +74,16 @@ nav .group>div.absolute.rounded-full.border-2{display:none!important}
 nav img.rounded-xl{border-radius:10px!important;box-shadow:0 1px 2px rgba(60,45,20,.2),0 4px 12px rgba(60,45,20,.12)!important}
 #favfi-backup-link:hover{background:hsl(var(--muted)/.7)!important;color:hsl(var(--foreground))!important}
 /* budget: expense rows laid out as icon | name+tags | amount + status + menu */
-.bg-card.rounded-3xl.p-5>div.relative.z-20:has(>div.flex.items-center.gap-4):has(>div.shrink-0){display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%}
-.bg-card.rounded-3xl.p-5>div.relative.z-20:has(>div.shrink-0)>div.flex.items-center.gap-4{flex:1;min-width:0}
-.bg-card.rounded-3xl.p-5>div.relative.z-20:has(>div.shrink-0)>div.shrink-0{flex:none}
+.bg-card.rounded-3xl.p-5>div.relative.z-20.fv-row{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%}
+.bg-card.rounded-3xl.p-5>div.relative.z-20.fv-row>div.flex.items-center.gap-4{flex:1;min-width:0}
+.bg-card.rounded-3xl.p-5>div.relative.z-20.fv-row>div.shrink-0{flex:none}
 .bg-card.rounded-3xl.p-5 div.hidden.sm\:flex.w-10.h-10{display:flex!important}
 button[title^="Tap to cycle"]{min-height:36px;padding:6px 12px!important;font-size:12.5px!important}
 button[title^="Tap to cycle"] span.hidden{display:inline!important}
 @media (max-width:639px){
- .flex.flex-col.sm\:flex-row.gap-3:has(>select){flex-direction:row;flex-wrap:wrap;gap:10px}
- .flex.flex-col.sm\:flex-row.gap-3:has(>select)>div{flex:1 1 100%}
- .flex.flex-col.sm\:flex-row.gap-3:has(>select)>select{flex:1 1 calc(50% - 5px);min-width:0}
+ .flex.flex-col.sm\:flex-row.gap-3.fv-selrow{flex-direction:row;flex-wrap:wrap;gap:10px}
+ .flex.flex-col.sm\:flex-row.gap-3.fv-selrow>div{flex:1 1 100%}
+ .flex.flex-col.sm\:flex-row.gap-3.fv-selrow>select{flex:1 1 calc(50% - 5px);min-width:0}
 }
 .rounded-full.p-0\.5.w-fit>button>div.absolute{background:hsl(var(--card))!important;box-shadow:0 1px 3px rgba(60,45,20,.15)!important}
 .dark .rounded-full.p-0\.5.w-fit>button>div.absolute{background:hsl(var(--accent))!important}
@@ -94,7 +94,7 @@ button[title^="Tap to cycle"] span.hidden{display:inline!important}
 
 /* cards keep the 3D tilt + glow; wrapper shadow removed so stacked cards stay visually separate */
 div.rounded-3xl.touch-pan-y{box-shadow:none!important;background:transparent!important}
-[style*="perspective"]>div.rounded-3xl:not(.bg-card){box-shadow:none!important;background-color:transparent!important}
+.fv-persp>div.rounded-3xl:not(.bg-card){box-shadow:none!important;background-color:transparent!important}
 @media (hover:hover){.bg-card.rounded-3xl{transition:box-shadow .35s ease,border-color .35s ease!important}.bg-card.rounded-3xl:hover{box-shadow:0 2px 4px rgba(70,50,20,.06),0 18px 44px rgba(70,50,20,.14)!important;border-color:hsl(var(--primary)/.28)!important}}
 
 /* performance: big backdrop blurs over static backgrounds cost GPU time on every scroll frame for no visible gain */
@@ -134,14 +134,19 @@ html.dark .recharts-tooltip-wrapper>div.rounded-xl{box-shadow:0 14px 34px rgba(0
 html.fv-calm .recharts-pie-sector{transition:none!important}
 
 /* dark mode: hard-coded white "glass" pills/buttons become calm tonal surfaces */
-html.dark [style*="background: rgba(255, 255, 255, 0.5"]{background:hsl(var(--foreground)/.06)!important;border:1px solid hsl(var(--foreground)/.12)!important;box-shadow:inset 0 1px 0 hsl(var(--foreground)/.05)!important;transition:background .2s,border-color .2s,transform .2s}
-html.dark a[style*="background: rgba(255, 255, 255, 0.5"]:hover{background:hsl(var(--primary)/.16)!important;border-color:hsl(var(--primary)/.4)!important}
+html.dark .fv-glass{background:hsl(var(--foreground)/.06)!important;border:1px solid hsl(var(--foreground)/.12)!important;box-shadow:inset 0 1px 0 hsl(var(--foreground)/.05)!important;transition:background .2s,border-color .2s,transform .2s}
+html.dark a.fv-glass:hover{background:hsl(var(--primary)/.16)!important;border-color:hsl(var(--primary)/.4)!important}
 .flex.items-center.justify-between.text-sm{gap:.75rem}
 .flex.items-center.justify-between.text-sm>.flex.items-center{min-width:0}
 .flex.items-center.justify-between.text-sm>.flex.items-center>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .flex.items-center.justify-between.text-sm>span:last-child{flex-shrink:0}
-:has(>.relative.h-52.w-52.shrink-0){flex-wrap:wrap;justify-content:center}
+.fv-donut{flex-wrap:wrap;justify-content:center}
 .relative.h-52.w-52.shrink-0+div{min-width:0;flex:1 1 200px}
+
+/* idle cost: ambient drifting layers get their own compositor layer so each frame is a cheap move, not a repaint */
+.fixed.inset-0.-z-10{contain:strict;transform:translateZ(0)}
+.fixed.inset-0.-z-10>img{will-change:transform;filter:none!important}
+div.mt-2.opacity-30,nav.fixed img,nav.fixed span.inline-block{will-change:transform}
 </style>
 </head>
 <body>
@@ -2947,12 +2952,18 @@ var FavFIEngine = (function () {
     var x = Math.max(12, Math.min(br.left - 14, vw - pw - 12)), y = Math.min(br.bottom + 10, vh - 200);
     w.style.setProperty("transform", "translate(" + Math.round(x) + "px," + Math.round(y) + "px)", "important");
     var dk = document.documentElement.classList.contains("dark"), P = function (k, v) { d.style.setProperty(k, v, "important"); };
-    P("background-color", dk ? "#262422" : "#fcfbf7"); P("background-image", "none"); P("-webkit-backdrop-filter", "none"); P("backdrop-filter", "none"); P("opacity", "1"); P("mix-blend-mode", "normal");
+    P("background-color", dk ? "#262422" : "#fcfbf7"); P("background-image", "none"); P("-webkit-backdrop-filter", "none"); P("backdrop-filter", "none"); P("mix-blend-mode", "normal");
     P("--card", dk ? "30 6% 17%" : "48 30% 98%"); P("--muted", dk ? "30 6% 20%" : "40 14% 93%"); P("--border", dk ? "30 6% 24%" : "44 16% 87%"); P("--popover", dk ? "30 6% 14%" : "48 40% 99%");
     P("width", pw + "px");
     d.style.setProperty("max-height", Math.max(260, vh - y - 16) + "px", "important");
   }
-  setInterval(placePanel, 150);
+  (function () {
+    var rafs = 0;
+    function burst() { var n = 0; cancelAnimationFrame(rafs); (function f() { placePanel(); if (n++ < 14) rafs = requestAnimationFrame(f); })(); }
+    new MutationObserver(function (m) { for (var i = 0; i < m.length; i++) for (var j = 0; j < m[i].addedNodes.length; j++) { var n = m[i].addedNodes[j]; if (n.nodeType === 1 && (n.hasAttribute("data-radix-popper-content-wrapper") || (n.querySelector && n.querySelector("[data-radix-popper-content-wrapper]")))) { burst(); return; } } }).observe(document.body, { childList: true });
+    addEventListener("resize", function () { if (document.querySelector(".fv-np")) burst(); });
+    document.addEventListener("click", function (e) { if (e.target.closest && e.target.closest("[role=dialog] button")) setTimeout(placePanel, 60); }, true);
+  })();
   function prefsUi() {
     var p = [].slice.call(document.querySelectorAll("p")).filter(function (n) { return /Choose what you.d like to hear about/.test(n.textContent); })[0];
     if (!p) return;
@@ -3012,7 +3023,7 @@ var FavFIEngine = (function () {
     ".fv-seg{display:inline-flex;padding:3px;border-radius:99px;background:hsl(var(--muted));gap:2px;flex:none}.fv-seg button{border:0;background:none;padding:6px 12px;border-radius:99px;font:500 13px system-ui;color:hsl(var(--muted-foreground));min-height:32px}.fv-seg button[aria-pressed=true]{background:hsl(var(--card));color:hsl(var(--foreground));box-shadow:0 1px 3px rgba(60,45,20,.15)}" +
     ".fv-sw{position:relative;flex:none;width:42px;height:26px;border-radius:99px;border:0;background:hsl(var(--muted-foreground)/.3);transition:background-color .25s;padding:0}.fv-sw i{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .25s cubic-bezier(.3,1.4,.5,1)}" +
     ".fv-sw[aria-checked=true]{background:hsl(var(--primary))}.fv-sw[aria-checked=true] i{transform:translateX(16px)}" +
-    "html.fv-notilt [style*='perspective']{perspective:none!important}html.fv-notilt [style*='perspective']>div{transform:none!important;transform-style:flat!important}html.fv-notilt .bg-card.rounded-3xl>div.absolute.pointer-events-none{display:none!important}" +
+    "html.fv-notilt .fv-persp{perspective:none!important}html.fv-notilt .fv-persp>div{transform:none!important;transform-style:flat!important}html.fv-notilt .bg-card.rounded-3xl>div.absolute.pointer-events-none{display:none!important}" +
     "html.fv-calm *,html.fv-calm *::before,html.fv-calm *::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}";
   css.textContent += "@media (min-width:600px){nav.md\\:hidden{padding-left:max(24px,env(safe-area-inset-left))!important;padding-right:max(24px,env(safe-area-inset-right))!important}nav.md\\:hidden a>div{min-width:92px!important;padding-top:8px!important;padding-bottom:8px!important}nav.md\\:hidden span{font-size:11.5px!important}}" +
     "@media (max-height:480px) and (orientation:landscape){nav.md\\:hidden a>div{padding-top:5px!important;padding-bottom:5px!important;min-width:64px!important}nav.md\\:hidden span{display:none!important}main{padding-top:8px!important}.page-title{font-size:26px!important;line-height:1.15!important}.fv-gl{padding:16px}}" +
@@ -3193,6 +3204,28 @@ var FavFIEngine = (function () {
     for (var i = 0; i < ls.length; i++) { var t = ls[i].textContent; if (/^\d+$/.test(t)) ls[i].textContent = t === "0" ? "Today" : "Month " + t; }
   });
   mo.observe(document.body, { childList: true, subtree: true, characterData: true });
+})();
+
+/* structure tags (replaces costly :has() / [style*=] CSS selectors): computed once per DOM change, not on every animation frame */
+(function () {
+  var t = 0;
+  function tag() {
+    t = 0;
+    var i, a, n;
+    a = document.querySelectorAll("nav a>div");
+    for (i = 0; i < a.length; i++) { n = !a[i].querySelector(":scope>div.absolute"); if (a[i].classList.contains("fv-nvi") !== n) a[i].classList.toggle("fv-nvi", n); }
+    a = document.querySelectorAll(".bg-card.rounded-3xl.p-5>div.relative.z-20");
+    for (i = 0; i < a.length; i++) { n = !!(a[i].querySelector(":scope>div.flex.items-center.gap-4") && a[i].querySelector(":scope>div.shrink-0")); if (a[i].classList.contains("fv-row") !== n) a[i].classList.toggle("fv-row", n); }
+    a = document.querySelectorAll(".flex.flex-col.gap-3");
+    for (i = 0; i < a.length; i++) { n = !!a[i].querySelector(":scope>select"); if (a[i].classList.contains("fv-selrow") !== n) a[i].classList.toggle("fv-selrow", n); }
+    a = document.querySelectorAll(".relative.h-52.w-52.shrink-0");
+    for (i = 0; i < a.length; i++) if (a[i].parentElement && !a[i].parentElement.classList.contains("fv-donut")) a[i].parentElement.classList.add("fv-donut");
+    a = document.querySelectorAll("[style*='perspective'],[style*='rgba(255, 255, 255, 0.5']");
+    for (i = 0; i < a.length; i++) { var st = a[i].getAttribute("style") || ""; if (st.indexOf("perspective") > -1) a[i].classList.add("fv-persp"); if (/background: rgba\(255, 255, 255, 0\.5/.test(st)) a[i].classList.add("fv-glass"); }
+  }
+  function sched() { if (!t) t = setTimeout(tag, 120); }
+  new MutationObserver(sched).observe(document.body, { childList: true, subtree: true });
+  window.addEventListener("hashchange", sched); sched();
 })();
 
 /* FavFI Home Screen card: a widget-shaped image you can save to Photos and show with the Photos widget.
