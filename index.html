@@ -3505,7 +3505,7 @@ var FavFIEngine = (function () {
     var n = document.getElementById("fv-scr"); if (!n) { n = document.createElement("div"); n.id = "fv-scr"; box.appendChild(n); }
     var names = { cover: "Compact (outer screen)", mid: "Roomy (inner screen)", wide: "Wide" };
     var ins = ["top", "right", "bottom", "left"].map(function (s) { var d = document.createElement("div"); d.style.cssText = "position:fixed;visibility:hidden;padding-" + s + ":env(safe-area-inset-" + s + ",0px)"; document.body.appendChild(d); var v = parseFloat(getComputedStyle(d)["padding" + s.charAt(0).toUpperCase() + s.slice(1)]) || 0; d.remove(); return Math.round(v); });
-    n.innerHTML = "<b>This screen</b><span>" + root.getAttribute("data-fv-size").replace("x", " × ") + " · " + names[root.getAttribute("data-fv-pose")] + " layout" + (ins.some(Boolean) ? " · edges " + ins.join("/") : "") + "</span>";
+    n.innerHTML = "<b>This screen</b><span>" + root.getAttribute("data-fv-size").replace("x", " × ") + " · " + names[root.getAttribute("data-fv-pose")] + " layout · css " + innerWidth + (matchMedia("(min-width:640px)").matches ? " (sm on)" : "") + (ins.some(Boolean) ? " · edges " + ins.join("/") : "") + "</span>";
   }
   /* turn the sidebar's bell into a standalone round button: keep it, hide everything else in that sidebar */
   function tagBell() {
@@ -3594,6 +3594,16 @@ var FavFIEngine = (function () {
     "html.fv-panel-open #favfi-backup-fab,html.fv-panel-open #fv-qa{opacity:0!important;pointer-events:none!important;transition:opacity .15s}" +
     /* label and control stack when the row is narrow */
     "#fv-navrow{flex-wrap:wrap!important}#fv-navrow>.fv-pt{flex:1 1 100%!important}#fv-navrow>.fv-seg{flex:1 1 100%;margin-top:10px}#fv-navrow .fv-seg button{flex:1}" +
+    /* expense rows on the compact screen: name and tags on top, amount / status / menu underneath. Does not depend on Tailwind's width breakpoints, which Safari can evaluate differently here */
+    "html.fv-cover .bg-card.rounded-3xl.p-5>div.relative.z-20.fv-row{flex-wrap:wrap!important;row-gap:12px;column-gap:10px;align-items:center}" +
+    "html.fv-cover .fv-row>div.flex.items-center.gap-4{flex:1 1 100%!important;gap:12px;min-width:0}" +
+    "html.fv-cover .fv-row>div.flex.items-center.gap-4>div.hidden{display:flex!important;width:38px;height:38px}" +
+    "html.fv-cover .fv-row>div.flex.items-center.gap-4>div.min-w-0{flex:1;min-width:0}" +
+    "html.fv-cover .fv-row h3{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.25;font-size:16px}" +
+    "html.fv-cover .fv-row .flex-wrap>span{white-space:nowrap;flex:none}" +
+    "html.fv-cover .fv-row>div.shrink-0{flex:1 1 100%!important;display:flex;align-items:center;gap:8px;justify-content:flex-start;padding-top:8px;border-top:1px solid hsl(var(--border)/.45)}" +
+    "html.fv-cover .fv-row>div.shrink-0>div.text-right{margin-right:auto;text-align:left}html.fv-cover .fv-row>div.shrink-0>div.text-right>div{font-size:20px}" +
+    "html.fv-cover .fv-row>div.shrink-0 .sm\\:inline{display:inline!important}" +
     /* touch targets: at least 44pt to hit, without changing how things look */
     "@media (pointer:coarse){" +
     "input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=file]),select,textarea{min-height:44px}" +
