@@ -3368,6 +3368,8 @@ var FavFIEngine = (function () {
     var vv = window.visualViewport, w = Math.round(vv ? vv.width : innerWidth), h = Math.round(vv ? vv.height : innerHeight);
     var p = w <= 520 ? "cover" : w < 900 ? "mid" : "wide";
     root.classList.toggle("fv-cover", p === "cover"); root.classList.toggle("fv-mid", p === "mid"); root.classList.toggle("fv-wide", p === "wide");
+    var navPos = ""; try { navPos = (JSON.parse(localStorage.getItem("favfi:meta:v1") || "{}") || {}).navPos || ""; } catch (e) {}
+    root.classList.toggle("fv-rail", navPos !== "bottom" && (p === "cover" || h <= 480));
     root.classList.toggle("fv-tall", h / w >= 1.35); root.classList.toggle("fv-short", h <= 480);
     root.setAttribute("data-fv-pose", p); root.setAttribute("data-fv-size", w + "x" + h);
     if (last && last !== p) {
@@ -3401,7 +3403,22 @@ var FavFIEngine = (function () {
     var ins = ["top", "right", "bottom", "left"].map(function (s) { var d = document.createElement("div"); d.style.cssText = "position:fixed;visibility:hidden;padding-" + s + ":env(safe-area-inset-" + s + ",0px)"; document.body.appendChild(d); var v = parseFloat(getComputedStyle(d)["padding" + s.charAt(0).toUpperCase() + s.slice(1)]) || 0; d.remove(); return Math.round(v); });
     n.innerHTML = "<b>This screen</b><span>" + root.getAttribute("data-fv-size").replace("x", " × ") + " · " + names[root.getAttribute("data-fv-pose")] + " layout" + (ins.some(Boolean) ? " · edges " + ins.join("/") : "") + "</span>";
   }
-  new MutationObserver(function () { if (document.getElementById("fv-prefs") && !document.getElementById("fv-scr")) readout(); }).observe(document.body, { childList: true, subtree: true });
+  function labelNav() { [].forEach.call(document.querySelectorAll("nav.md\\:hidden a"), function (a) { if (a.getAttribute("aria-label")) return; var sp = a.querySelector("span"); if (sp) { a.setAttribute("aria-label", sp.textContent.trim()); a.setAttribute("title", sp.textContent.trim()); } }); }
+  function navRow() {
+    var box = document.getElementById("fv-prefs"); if (!box || document.getElementById("fv-navrow")) return;
+    var cur = "side"; try { cur = (JSON.parse(localStorage.getItem("favfi:meta:v1") || "{}") || {}).navPos === "bottom" ? "bottom" : "side"; } catch (e) {}
+    var row = document.createElement("div"); row.id = "fv-navrow"; row.className = "fv-pr";
+    row.innerHTML = "<div class='fv-pt'><b>Navigation on small screens</b><span>Side rail keeps your thumb near the edge and frees the bottom</span></div>";
+    var seg = document.createElement("div"); seg.className = "fv-seg"; seg.setAttribute("role", "group");
+    [["side", "Side"], ["bottom", "Bottom"]].forEach(function (o) {
+      var bt = document.createElement("button"); bt.type = "button"; bt.textContent = o[1]; bt.setAttribute("aria-pressed", cur === o[0] ? "true" : "false");
+      bt.onclick = function () { try { var m = JSON.parse(localStorage.getItem("favfi:meta:v1") || "{}") || {}; m.navPos = o[0]; localStorage.setItem("favfi:meta:v1", JSON.stringify(m)); } catch (e) {} [].forEach.call(seg.children, function (c) { c.setAttribute("aria-pressed", "false"); }); bt.setAttribute("aria-pressed", "true"); pose(); try { window.FavFIFx && FavFIFx.haptic(); } catch (e) {} };
+      seg.appendChild(bt);
+    });
+    row.appendChild(seg); var scr = document.getElementById("fv-scr"); box.insertBefore(row, scr || null);
+  }
+  new MutationObserver(function () { if (document.getElementById("fv-prefs")) { if (!document.getElementById("fv-scr")) readout(); navRow(); } labelNav(); }).observe(document.body, { childList: true, subtree: true });
+  labelNav();
 
   /* inner screen: give mid-width windows the same sidebar layout as a tablet (clone the app's 768px rules down to 680px) */
   (function () {
@@ -3435,6 +3452,14 @@ var FavFIEngine = (function () {
     "html.fv-cover .bg-card.rounded-3xl.p-6{padding:18px!important}html.fv-cover .bg-card.rounded-3xl.p-5{padding:16px!important}html.fv-cover .space-y-8>*+*{margin-top:22px!important}html.fv-cover .space-y-6>*+*{margin-top:16px!important}" +
     "html.fv-cover .grid.grid-cols-3 .font-serif{font-size:clamp(15px,4.8vw,20px)!important;white-space:nowrap}" +
     "html.fv-cover .fv-toast{bottom:calc(150px + env(safe-area-inset-bottom))}" +
+    /* side rail (outer screen, and the sideways tent pose): tabs live along the edge like a native vertical bar */
+    "html.fv-rail nav.md\\:hidden{position:fixed!important;top:50%!important;bottom:auto!important;left:auto!important;right:max(10px,env(safe-area-inset-right))!important;transform:translateY(-50%);width:58px!important;max-height:calc(100dvh - 150px);flex-direction:column!important;justify-content:center!important;gap:4px;padding:8px 5px!important;border-radius:29px!important;border:1px solid hsl(var(--border))!important;background:hsl(var(--card)/.96)!important;box-shadow:0 10px 30px rgba(40,30,10,.14),0 1px 3px rgba(40,30,10,.08)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}" +
+    "html.dark.fv-rail nav.md\\:hidden{box-shadow:0 12px 32px rgba(0,0,0,.5)!important}" +
+    "html.fv-rail nav.md\\:hidden a>div{min-width:0!important;width:46px;height:46px;padding:0!important;justify-content:center;align-items:center;border-radius:23px!important}html.fv-rail nav.md\\:hidden a>div>div.absolute{border-radius:23px!important}html.fv-rail nav.md\\:hidden a>div svg{width:24px!important;height:24px!important}html.fv-rail nav.md\\:hidden span{display:none!important}html.fv-rail nav.md\\:hidden a>div img{width:30px!important;height:30px!important}" +
+    "html.fv-rail.fv-cover main{padding-right:calc(max(10px,env(safe-area-inset-right)) + 66px)!important;padding-bottom:calc(110px + env(safe-area-inset-bottom))!important}html.fv-rail.fv-short main{padding-right:calc(max(10px,env(safe-area-inset-right)) + 66px)!important;padding-bottom:90px!important}" +
+    "html.fv-rail #fv-qa{right:max(10px,env(safe-area-inset-right))!important;bottom:calc(22px + env(safe-area-inset-bottom))!important;width:58px;height:58px}html.fv-rail.fv-short #fv-qa{width:50px;height:50px;bottom:12px!important}html.fv-rail.fv-short nav.md\\:hidden{top:12px!important;transform:none;max-height:calc(100dvh - 90px)}html.fv-rail.fv-short nav.md\\:hidden a>div{width:40px;height:40px}" +
+    "html.fv-rail #favfi-backup-fab{bottom:calc(22px + env(safe-area-inset-bottom))!important}html.fv-rail .fv-toast{bottom:calc(96px + env(safe-area-inset-bottom))!important}html.fv-rail.fv-scrolldown #fv-qa{transform:none;opacity:1;pointer-events:auto}" +
+    "html.fv-rail.fv-cover .fv-stat{gap:6px!important}html.fv-rail.fv-cover .fv-stat div{padding:9px 7px!important;min-width:0;font-size:10.5px!important;white-space:nowrap}html.fv-rail.fv-cover .fv-stat b{font-size:16px!important}html.fv-rail.fv-cover .grid.grid-cols-3{gap:6px!important}html.fv-rail.fv-cover .grid.grid-cols-3>div{padding:9px 8px!important;min-width:0}html.fv-rail.fv-cover .grid.grid-cols-3 .text-xs{font-size:10.5px!important;white-space:nowrap}html.fv-rail.fv-cover .bg-card.rounded-3xl.p-6{padding:16px!important}" +
     /* inner screen / mid widths: use the room (two columns) before the sidebar appears */
     "@media (min-width:600px) and (max-width:767px){.md\\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.md\\:grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.md\\:col-span-2{grid-column:span 2/span 2}.md\\:flex-row{flex-direction:row}}" +
     "html.fv-mid main{max-width:860px;margin-left:auto;margin-right:auto}" +
