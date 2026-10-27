@@ -3026,7 +3026,7 @@ var FavFIEngine = (function () {
     "html.fv-notilt .fv-persp{perspective:none!important}html.fv-notilt .fv-persp>div{transform:none!important;transform-style:flat!important}html.fv-notilt .bg-card.rounded-3xl>div.absolute.pointer-events-none{display:none!important}" +
     "html.fv-calm *,html.fv-calm *::before,html.fv-calm *::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}";
   css.textContent += "@media (min-width:600px){nav.md\\:hidden{padding-left:max(24px,env(safe-area-inset-left))!important;padding-right:max(24px,env(safe-area-inset-right))!important}nav.md\\:hidden a>div{min-width:92px!important;padding-top:8px!important;padding-bottom:8px!important}nav.md\\:hidden span{font-size:11.5px!important}}" +
-    "@media (max-height:480px) and (orientation:landscape){nav.md\\:hidden a>div{padding-top:5px!important;padding-bottom:5px!important;min-width:64px!important}nav.md\\:hidden span{display:none!important}main{padding-top:8px!important}.page-title{font-size:26px!important;line-height:1.15!important}.fv-gl{padding:16px}}" +
+    "@media (max-height:480px) and (min-aspect-ratio:3/2){nav.md\\:hidden a>div{padding-top:5px!important;padding-bottom:5px!important;min-width:64px!important}nav.md\\:hidden span{display:none!important}main{padding-top:8px!important}.page-title{font-size:26px!important;line-height:1.15!important}.fv-gl{padding:16px}}" +
     "html.fv-compact .bg-card.rounded-3xl.p-6{padding:16px!important}html.fv-compact .bg-card.rounded-3xl.p-5{padding:14px!important}html.fv-compact .space-y-6>*+*{margin-top:14px!important}html.fv-compact .space-y-8>*+*{margin-top:18px!important}html.fv-compact .page-title{font-size:28px!important}html.fv-compact .fv-gl{padding:16px}html.fv-compact #fv-glance,html.fv-compact #fv-nw{margin-bottom:18px}" +
     "@media (min-width:600px) and (max-width:1023px){.fv-gl .fv-stat b{font-size:22px}}";
   window.FavFIFx = { confetti: confetti, sparkle: sparkle, chime: chime, haptic: haptic, on: prefOn };
@@ -3356,6 +3356,91 @@ var FavFIEngine = (function () {
     var sh = document.getElementById("fv-share"); if (!sh || document.getElementById("fv-wg-btn")) return;
     var b = el("button", null, "Home Screen card"); b.id = "fv-wg-btn"; b.type = "button"; b.onclick = open; sh.parentNode.insertBefore(b, sh);
   }, 1500);
+})();
+
+/* FavFI: adapts to whatever space the screen gives it (iPhone Duo outer screen, inner screen, any fold pose).
+   Decisions use the available size only - never device model, idiom or orientation. */
+(function () {
+  "use strict";
+  var root = document.documentElement, last = "", lastW = 0, t = 0, posing = 0;
+  function pose() {
+    t = 0;
+    var vv = window.visualViewport, w = Math.round(vv ? vv.width : innerWidth), h = Math.round(vv ? vv.height : innerHeight);
+    var p = w <= 520 ? "cover" : w < 900 ? "mid" : "wide";
+    root.classList.toggle("fv-cover", p === "cover"); root.classList.toggle("fv-mid", p === "mid"); root.classList.toggle("fv-wide", p === "wide");
+    root.classList.toggle("fv-tall", h / w >= 1.35); root.classList.toggle("fv-short", h <= 480);
+    root.setAttribute("data-fv-pose", p); root.setAttribute("data-fv-size", w + "x" + h);
+    if (last && last !== p) {
+      root.classList.add("fv-posing"); clearTimeout(posing); posing = setTimeout(function () { root.classList.remove("fv-posing"); }, 420);
+      setTimeout(function () { try { window.dispatchEvent(new Event("resize")); } catch (e) {} }, 260);
+    }
+    last = p; lastW = w; readout();
+  }
+  function sched() { if (!t) t = requestAnimationFrame(pose); }
+  addEventListener("resize", sched); addEventListener("orientationchange", sched);
+  if (window.visualViewport) visualViewport.addEventListener("resize", sched);
+  pose();
+
+  /* floating buttons step aside while you scroll down, return when you scroll up */
+  var y0 = 0, tick = 0;
+  function pos(e) { var s = e.target; return s && s.scrollTop != null && s !== document ? s.scrollTop : (window.pageYOffset || 0); }
+  addEventListener("scroll", function (e) {
+    if (tick) return; var ev = e;
+    tick = requestAnimationFrame(function () {
+      tick = 0; var y = pos(ev), d = y - y0;
+      if (Math.abs(d) < 8) return;
+      root.classList.toggle("fv-scrolldown", d > 0 && y > 60); y0 = y;
+    });
+  }, { passive: true, capture: true });
+
+  /* tiny screen read-out inside Preferences (helps tune layouts) */
+  function readout() {
+    var box = document.getElementById("fv-prefs"); if (!box) return;
+    var n = document.getElementById("fv-scr"); if (!n) { n = document.createElement("div"); n.id = "fv-scr"; box.appendChild(n); }
+    var names = { cover: "Compact (outer screen)", mid: "Roomy (inner screen)", wide: "Wide" };
+    var ins = ["top", "right", "bottom", "left"].map(function (s) { var d = document.createElement("div"); d.style.cssText = "position:fixed;visibility:hidden;padding-" + s + ":env(safe-area-inset-" + s + ",0px)"; document.body.appendChild(d); var v = parseFloat(getComputedStyle(d)["padding" + s.charAt(0).toUpperCase() + s.slice(1)]) || 0; d.remove(); return Math.round(v); });
+    n.innerHTML = "<b>This screen</b><span>" + root.getAttribute("data-fv-size").replace("x", " × ") + " · " + names[root.getAttribute("data-fv-pose")] + " layout" + (ins.some(Boolean) ? " · edges " + ins.join("/") : "") + "</span>";
+  }
+  new MutationObserver(function () { if (document.getElementById("fv-prefs") && !document.getElementById("fv-scr")) readout(); }).observe(document.body, { childList: true, subtree: true });
+
+  /* inner screen: give mid-width windows the same sidebar layout as a tablet (clone the app's 768px rules down to 680px) */
+  (function () {
+    var out = [];
+    function walk(rs, inMd) {
+      for (var j = 0; j < rs.length; j++) {
+        var r = rs[j], txt = r.conditionText || (r.media && r.media.mediaText) || "";
+        if (r.type === 4) { walk(r.cssRules, /min-width:\s*(768px|48rem)/.test(txt) && !/max-width|height|orientation/.test(txt)); }
+        else if (r.cssRules && !r.selectorText) walk(r.cssRules, inMd);
+        else if (inMd && r.selectorText && /\.md\\:/.test(r.selectorText) && r.style) out.push(r.cssText);
+      }
+    }
+    try { for (var i = 0; i < document.styleSheets.length; i++) { var rs; try { rs = document.styleSheets[i].cssRules; } catch (e) { continue; } walk(rs, false); } } catch (e) {}
+    window.__fvMd = out.length;
+    if (out.length) { var st = document.createElement("style"); st.textContent = "@media (min-width:680px) and (max-width:767.98px){" + out.join("\n") + "}"; document.head.appendChild(st); }
+  })();
+
+  var css = document.createElement("style");
+  css.textContent =
+    /* dynamic viewport instead of fixed vh */
+    ".min-h-screen{min-height:100dvh}.h-screen{height:100dvh}" +
+    /* floating buttons: gentle step-aside */
+    "#fv-qa,#favfi-backup-fab{transition:transform .35s cubic-bezier(.3,1.2,.4,1),opacity .25s}html.fv-scrolldown #fv-qa{transform:translateY(90px) scale(.7);opacity:0;pointer-events:none}html.fv-scrolldown #favfi-backup-fab{transform:translateY(70px);opacity:0;pointer-events:none}" +
+    "html.fv-posing main{animation:fvPose .4s cubic-bezier(.2,.8,.2,1)}@keyframes fvPose{from{opacity:.4;transform:scale(.985)}to{opacity:1;transform:none}}html.fv-calm main{animation:none!important}" +
+    "#fv-scr{margin-top:14px;padding:12px 14px;border-radius:14px;background:hsl(var(--muted)/.6);font:400 12px/1.4 system-ui;color:hsl(var(--muted-foreground))}#fv-scr b{display:block;font:600 11px system-ui;letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px}" +
+    /* outer screen: calm, compact, nothing covering your numbers */
+    "html.fv-cover .page-title{font-size:clamp(25px,7.6vw,32px)!important;line-height:1.12!important}" +
+    "html.fv-cover main{padding-left:max(16px,env(safe-area-inset-left))!important;padding-right:max(16px,env(safe-area-inset-right))!important;padding-bottom:calc(150px + env(safe-area-inset-bottom))!important}" +
+    "html.fv-cover #fv-qa{right:max(14px,env(safe-area-inset-right));bottom:calc(92px + env(safe-area-inset-bottom));width:50px;height:50px}" +
+    "html.fv-cover #favfi-backup-fab{right:auto!important;left:-17px!important;bottom:calc(104px + env(safe-area-inset-bottom))!important;width:40px!important;height:40px!important;opacity:.5!important;padding-left:14px!important}html.fv-cover #favfi-backup-fab:active,html.fv-cover #favfi-backup-fab:focus{left:8px!important;padding-left:0!important;opacity:1!important}html.fv-short #favfi-backup-fab{display:none!important}html.fv-short #fv-qa{bottom:calc(66px + env(safe-area-inset-bottom));width:44px;height:44px}" +
+    "html.fv-cover .bg-card.rounded-3xl.p-6{padding:18px!important}html.fv-cover .bg-card.rounded-3xl.p-5{padding:16px!important}html.fv-cover .space-y-8>*+*{margin-top:22px!important}html.fv-cover .space-y-6>*+*{margin-top:16px!important}" +
+    "html.fv-cover .grid.grid-cols-3 .font-serif{font-size:clamp(15px,4.8vw,20px)!important;white-space:nowrap}" +
+    "html.fv-cover .fv-toast{bottom:calc(150px + env(safe-area-inset-bottom))}" +
+    /* inner screen / mid widths: use the room (two columns) before the sidebar appears */
+    "@media (min-width:600px) and (max-width:767px){.md\\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.md\\:grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.md\\:col-span-2{grid-column:span 2/span 2}.md\\:flex-row{flex-direction:row}}" +
+    "html.fv-mid main{max-width:860px;margin-left:auto;margin-right:auto}" +
+    /* short windows are decided by height and shape, not rotation */
+    "@media (max-height:480px) and (min-aspect-ratio:3/2){nav.md\\:hidden a>div{padding-top:5px!important;padding-bottom:5px!important;min-width:64px!important}nav.md\\:hidden span{display:none!important}main{padding-top:8px!important}.page-title{font-size:26px!important;line-height:1.15!important}}";
+  document.head.appendChild(css);
 })();
 </script>
 <script>(function(){try{if("serviceWorker"in navigator&&/^https?:$/.test(location.protocol)){addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{scope:"./"}).catch(function(){})})}}catch(e){}})();</script>
