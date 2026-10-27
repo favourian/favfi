@@ -2150,7 +2150,7 @@ var FavFIEngine = (function () {
   function toast(msg, yes, onYes, key) {
     var old = document.querySelector(".fw-toast"); if (old) old.remove();
     var t = el("div", "fw-toast"); t.setAttribute("role", "status");
-    t.innerHTML = "<p>" + msg + "</p>" + (yes ? "<button class='y'>" + yes + "</button><button class='n'>Later</button>" : "<button class='n'>OK</button>");
+    t.innerHTML = "<p>" + msg + "</p>" + (yes ? "<button class='y'>" + yes + "</button><button class='n'>" + (yes === "Undo" ? "Dismiss" : "Later") + "</button>" : "<button class='n'>OK</button>");
     document.body.appendChild(t); requestAnimationFrame(function () { requestAnimationFrame(function () { t.classList.add("in"); }); });
     function close() { t.classList.remove("in"); setTimeout(function () { t.remove(); }, 500); }
     var y = t.querySelector(".y"); if (y) y.onclick = function () { close(); if (onYes) onYes(); };
@@ -2929,8 +2929,7 @@ var FavFIEngine = (function () {
     g.insertAdjacentElement("afterend", host); host.setAttribute("data-sig", sig);
     var first = rows[0].value, lastV = rows[rows.length - 1].value, diff = lastV - first;
     host.innerHTML = "<div class='fv-gl'><div class='fv-glh'><h3>Net worth over time</h3><span>" + (rows.length > 1 ? (diff >= 0 ? "+" : "−") + $(Math.abs(diff)) + " since " + monthLabel(rows[0].month) : "Just getting started") + "</span></div>" + (rows.length > 1 ? chartHtml(rows) : "<div class='fv-one'><i></i><div><b>" + $(rows[0].value).replace('$-','−$') + "</b><span>" + monthLabel(rows[0].month) + " · your first point</span></div></div>") +
-      (rows.length < 2 ? "<p class='fv-ok' style='margin:12px 0 0'>The line grows each month as you keep your numbers up to date.</p>" : "") + "<button type='button' class='fv-btn g' id='fv-nw-sv' style='margin-top:12px;width:100%'>+ Add savings</button></div>";
-    var nb = host.querySelector("#fv-nw-sv"); if (nb) nb.onclick = function () { window.FavFISavings && window.FavFISavings.open({}); };
+      (rows.length < 2 ? "<p class='fv-ok' style='margin:12px 0 0'>The line grows each month as you keep your numbers up to date.</p>" : "") + "</div>";
   }
 
   function bigSheet(title, body, kind) {
@@ -2996,7 +2995,8 @@ var FavFIEngine = (function () {
       ["compact", "Compact layout", "Tighter spacing for small screens, like a foldable's cover display", false]]],
     ["Dashboard", [
       ["recapCard", "Monthly recap", "A short summary card once a month", true],
-      ["dueSoon", "Due-soon list", "Show bills due in the next 7 days on the dashboard", true]]],
+      ["dueSoon", "Due-soon list", "Show bills due in the next 7 days on the dashboard", true],
+      ["checkin", "Monthly check-in", "A 30-second reminder in the first week of each month", true]]],
     ["Privacy", [
       ["hideAmts", "Hide amounts", "Blurs dollar amounts on screen. Tap one to peek for a moment", false],
       ["autoLock", "Auto-lock when idle", "Locks after 5 minutes of no use. Needs an app lock PIN", false]]],
@@ -3470,8 +3470,8 @@ var FavFIEngine = (function () {
     var p = w <= 520 ? "cover" : w < 1024 ? "mid" : "wide";
     root.classList.toggle("fv-cover", p === "cover"); root.classList.toggle("fv-mid", p === "mid"); root.classList.toggle("fv-wide", p === "wide");
     var navPos = ""; try { navPos = (JSON.parse(localStorage.getItem("favfi:meta:v1") || "{}") || {}).navPos || ""; } catch (e) {}
-    root.classList.toggle("fv-rail", navPos !== "classic" && (w < 1024 || h <= 480));
-    root.classList.toggle("fv-tall", h / w >= 1.35); root.classList.toggle("fv-short", h <= 480);
+    root.classList.toggle("fv-rail", navPos !== "classic" && (w < 1024 || h <= 480 || root.classList.contains("fv-lap")));
+    root.classList.toggle("fv-tall", h / w >= 1.35); root.classList.toggle("fv-short", h <= 480 || root.classList.contains("fv-lap"));
     root.setAttribute("data-fv-pose", p); root.setAttribute("data-fv-size", w + "x" + h);
     if (last && last !== p) {
       root.classList.add("fv-posing"); clearTimeout(posing); posing = setTimeout(function () { root.classList.remove("fv-posing"); }, 420);
@@ -3643,6 +3643,163 @@ var FavFIEngine = (function () {
   }
   function st() { if (!tt) tt = setTimeout(tag, 400); }
   new MutationObserver(st).observe(document.body, { childList: true, subtree: true }); addEventListener("hashchange", st); st();
+})();
+
+/* ---- swipe to mark paid, saving strip, monthly check-in, fold/posture awareness ---- */
+(function () {
+  var META = "favfi:meta:v1", root = document.documentElement;
+  function gm() { try { return JSON.parse(localStorage.getItem(META) || "{}") || {}; } catch (e) { return {}; } }
+  function sm(p) { var m = gm(); for (var k in p) m[k] = p[k]; try { localStorage.setItem(META, JSON.stringify(m)); } catch (e) {} }
+  function data() { try { return JSON.parse(window.FavFIData.exportJson()).data; } catch (e) { return null; } }
+  function $(n) { return "$" + Math.round(n).toLocaleString(); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function fx(n) { try { var f = window.FavFIFx; if (!f) return; if (n === "ok") { f.haptic(); f.chime && f.chime("tap"); } } catch (e) {} }
+  function onRoute(r) { var h = location.hash.replace(/^#/, ""); return h === r; }
+  function onDash() { var h = location.hash.replace(/^#/, ""); return h === "" || h === "/" || h === "/dashboard"; }
+
+  var css = document.createElement("style"); css.id = "fv-x10";
+  css.textContent =
+    ".fv-swp{position:absolute;inset:0;border-radius:inherit;z-index:5;display:flex;align-items:center;padding-left:22px;gap:10px;background:hsl(150 45% 42%/.16);color:hsl(150 45% 28%);font:600 15px system-ui;opacity:0;pointer-events:none}html.dark .fv-swp{color:hsl(150 50% 70%);background:hsl(150 45% 40%/.22)}.fv-swp svg{width:22px;height:22px}" +
+    ".fv-sv .fv-bar{height:10px;border-radius:6px;background:hsl(var(--muted));overflow:hidden;margin:12px 0 8px}.fv-sv .fv-bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,hsl(var(--primary)/.75),hsl(var(--primary)));transition:width .8s cubic-bezier(.2,.8,.2,1)}.fv-sv p{margin:0;font-size:13.5px;color:hsl(var(--muted-foreground))}.fv-sv .fv-svh{display:flex;gap:10px;margin-top:12px}.fv-sv .fv-svh button{flex:1}" +
+    "html.fv-cover .fv-ci .fv-glh,html.fv-cover .fv-sv .fv-glh{flex-wrap:wrap;row-gap:2px}.fv-ci .fv-glh h3,.fv-sv .fv-glh h3{white-space:nowrap}" +
+    ".fv-ci .fv-cis{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}.fv-ci .fv-cis button{border:1px solid hsl(var(--border));background:hsl(var(--card));border-radius:999px;padding:0 16px;min-height:44px;font:600 14px system-ui;color:hsl(var(--foreground))}.fv-ci .fv-cis button[data-d='1']{background:hsl(var(--primary)/.14);border-color:hsl(var(--primary)/.4);color:hsl(var(--primary))}.fv-ci .fv-cid{border:0;background:none;color:hsl(var(--muted-foreground));font:500 13.5px system-ui;min-height:44px;padding:0 4px}" +
+    /* wealth cards & calendar on the compact screen */
+    "html.fv-cover .fw-card{padding:18px}html.fv-cover .fw-cal{gap:10px}html.fv-cover .fw-date{width:44px}html.fv-cover .fw-cal .fw-pill{display:inline-block;margin-top:4px}" +
+    /* laptop posture: content in the upper half, controls in the lower half */
+    "html.fv-lap body{height:var(--fv-lt)!important;overflow:hidden!important}html.fv-lap #root>div.h-screen{height:var(--fv-lt)!important}html.fv-lap{--fv-t:calc(var(--fv-lb) + 12px)}" +
+    "html.fv-lap.fv-rail main,html.fv-lap.fv-rail div.shrink-0.relative.z-10{padding-right:max(16px,env(safe-area-inset-right,0px))!important;padding-left:max(16px,env(safe-area-inset-left,0px))!important}html.fv-lap.fv-rail.fv-short main{padding-bottom:24px!important}" +
+    "html.fv-lap .fixed.inset-0.-z-10>img{opacity:0!important}html.fv-lap .page-title{font-size:24px!important}html.fv-lap div.shrink-0.relative.z-10 header p{display:none!important}" +
+    "html.fv-lap .fv-sheet{top:var(--fv-lb)!important;bottom:0!important}html.fv-lap .fv-sheet>.fv-card{max-height:calc(100vh - var(--fv-lb) - 12px)!important}" +
+    "html.fv-lap #fv-qa{top:calc(var(--fv-lb) + 12px)!important;bottom:auto!important;right:calc(var(--fv-r) + 64px)!important}" +
+    /* book posture (side by side): keep content out of the hinge */
+    "html.fv-book.fv-rail main,html.fv-book.fv-rail div.shrink-0.relative.z-10{padding-right:max(calc(var(--fv-r) + 68px),calc(100vw - var(--fv-book-r) + 12px))!important}";
+  document.head.appendChild(css);
+
+  /* ---------- swipe right on an expense to mark it paid ---------- */
+  var sw = null;
+  function pillOf(row) { return row.querySelector("button[title^='Tap to cycle']"); }
+  function stateOf(p) { var t = (p && p.textContent || "").trim(); return /half|½/i.test(t) ? "half" : /^paid/i.test(t) ? "paid" : "unpaid"; }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function markPaid(row, card) {
+    var go = async function () {
+      for (var i = 0; i < 3; i++) {
+        var p = pillOf(row); if (!p || !row.isConnected) return;
+        if (stateOf(p) === "paid") return;
+        p.click(); await wait(450);
+      }
+    };
+    return go();
+  }
+  document.addEventListener("touchstart", function (e) {
+    sw = null; if (e.touches.length !== 1 || !onRoute("/budget")) return;
+    var t = e.target; if (!t.closest) return; var row = t.closest(".fv-row"); if (!row || t.closest("button,a,input,select,[role=menu]")) return;
+    var x = e.touches[0].clientX; if (x < 24) return;
+    var card = row.parentElement; sw = { row: row, card: card, x: x, y: e.touches[0].clientY, dx: 0, lock: false, ov: null, st: stateOf(pillOf(row)) };
+  }, { passive: true });
+  document.addEventListener("touchmove", function (e) {
+    if (!sw) return; var t = e.touches[0], dx = t.clientX - sw.x, dy = t.clientY - sw.y;
+    if (!sw.lock) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { sw = null; return; }
+      if (dx > 14 && dx > Math.abs(dy) * 1.5) {
+        sw.lock = true; var ov = document.createElement("div"); ov.className = "fv-swp";
+        ov.innerHTML = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='M5 12.5l4.5 4.5L19 7.5'/></svg><span>" + (sw.st === "paid" ? "Already paid" : "Mark paid") + "</span>";
+        sw.card.insertBefore(ov, sw.card.firstChild); sw.ov = ov; sw.card.style.overflow = "hidden"; sw.row.style.transition = "none"; sw.fired = false;
+      } else return;
+    }
+    if (e.cancelable) e.preventDefault();
+    sw.dx = Math.max(0, dx); var tx = sw.dx > 80 ? 80 + (sw.dx - 80) * .22 : sw.dx;
+    sw.row.style.transform = "translateX(" + tx + "px)"; sw.ov.style.opacity = Math.min(1, sw.dx / 80);
+    if (sw.dx >= 80 && !sw.fired) { sw.fired = true; if (sw.st !== "paid") fx("ok"); } else if (sw.dx < 80) sw.fired = false;
+  }, { passive: false });
+  function end() {
+    if (!sw) return; var s = sw; sw = null; if (!s.lock) return;
+    s.row.style.transition = "transform .38s cubic-bezier(.2,.9,.3,1.1)"; s.row.style.transform = "";
+    var commit = s.dx >= 80 && s.st !== "paid";
+    setTimeout(function () { s.row.style.transition = ""; s.card.style.overflow = ""; if (s.ov) { s.ov.style.transition = "opacity .3s"; s.ov.style.opacity = 0; setTimeout(function () { s.ov && s.ov.remove(); }, 320); } }, commit ? 700 : 380);
+    if (commit) markPaid(s.row, s.card);
+  }
+  document.addEventListener("touchend", end, { passive: true }); document.addEventListener("touchcancel", end, { passive: true });
+
+  /* ---------- "saving this month" strip on the dashboard ---------- */
+  var svSig = "";
+  function strip() {
+    var host = document.getElementById("fv-sv");
+    if (!onDash()) { if (host) host.remove(); svSig = ""; return; }
+    var g = document.getElementById("fv-glance"); if (!g) return;
+    var d = data(); if (!d) return;
+    var st = window.FavFISavings ? window.FavFISavings.stats() : { month: 0 };
+    var pf = Array.isArray(d.profile) ? d.profile[0] : d.profile, goal = pf && +pf.savingsGoalMonthly > 0 ? +pf.savingsGoalMonthly : 0, saved = st.month || 0;
+    var nw = document.getElementById("fv-nw"), prev = nw || g;
+    var sig = [Math.round(saved), goal].join("|");
+    if (host && sig === svSig && host.previousElementSibling === prev) return;
+    if (!host) { host = document.createElement("div"); host.id = "fv-sv"; host.className = "fv-sv"; }
+    if (host.previousElementSibling !== prev) prev.insertAdjacentElement("afterend", host);
+    if (sig === svSig && host.firstChild) return;
+    svSig = sig; var pct = goal ? Math.min(1, saved / goal) : 0;
+    var copy = goal ? (saved >= goal ? "You hit this month's savings goal. Nice work." : saved > 0 ? $(goal - saved) + " to go this month. Even a little counts." : "Nothing set aside yet this month. Even $25 counts.") : (saved > 0 ? "Every dollar you set aside also feeds your goals." : "Add what you set aside and it feeds your goals and net worth.");
+    host.innerHTML = "<div class='fv-gl'><div class='fv-glh'><h3>Saving this month</h3><span>" + (goal ? $(saved) + " of " + $(goal) : saved > 0 ? $(saved) : "") + "</span></div>" +
+      (goal ? "<div class='fv-bar'><i style='width:0'></i></div>" : "") + "<p>" + copy + "</p><div class='fv-svh'><button type='button' class='fv-btn' id='fv-sv-add'>+ Add savings</button></div></div>";
+    var bar = host.querySelector(".fv-bar i"); if (bar) requestAnimationFrame(function () { requestAnimationFrame(function () { bar.style.width = Math.round(pct * 100) + "%"; }); });
+    host.querySelector("#fv-sv-add").onclick = function () { window.FavFISavings && window.FavFISavings.open({}); };
+  }
+  window.addEventListener("favfi:savings", function () { svSig = ""; setTimeout(strip, 120); });
+
+  /* ---------- monthly check-in (first week of the month) ---------- */
+  function ym() { var n = new Date(); return n.getFullYear() + "-" + (n.getMonth() + 1); }
+  function checkin() {
+    var host = document.getElementById("fv-ci"), m = gm(), show = onDash() && m.checkin !== false && m.ciMonth !== ym() && new Date().getDate() <= 7;
+    if (!show) { if (host) host.remove(); return; }
+    var g = document.getElementById("fv-glance"); if (!g) return;
+    if (host && host.nextElementSibling === g) return;
+    if (!host) {
+      host = document.createElement("div"); host.id = "fv-ci"; host.className = "fv-ci";
+      var mo = new Date().toLocaleString(undefined, { month: "long" });
+      host.innerHTML = "<div class='fv-gl'><div class='fv-glh'><h3>" + esc(mo) + " check-in</h3><span>about 30 seconds</span></div><p style='margin:0;font-size:13.5px;color:hsl(var(--muted-foreground))'>A quick tidy-up so your numbers, goals and net worth stay true.</p><div class='fv-cis'><button type='button' data-k='sv'>Add savings</button><button type='button' data-k='bills'>Review bills</button><button type='button' data-k='bal'>Update balances</button></div><button type='button' class='fv-cid'>Done for this month</button></div>";
+      host.addEventListener("click", function (e) {
+        var b = e.target.closest("button"); if (!b) return;
+        if (b.classList.contains("fv-cid")) { sm({ ciMonth: ym() }); try { window.FavFIFx && window.FavFIFx.sparkle(e.clientX, e.clientY); } catch (x) {} fx("ok"); host.remove(); return; }
+        b.setAttribute("data-d", "1"); var k = b.getAttribute("data-k");
+        if (k === "sv") window.FavFISavings && window.FavFISavings.open({}); else if (k === "bills") location.hash = "#/budget"; else if (k === "bal") location.hash = "#/setup";
+      });
+    }
+    g.insertAdjacentElement("beforebegin", host);
+  }
+  setInterval(function () { strip(); checkin(); }, 900);
+  addEventListener("hashchange", function () { svSig = ""; setTimeout(function () { strip(); checkin(); }, 200); });
+
+  /* ---------- fold / posture ---------- */
+  function mq(q) { try { return matchMedia(q).matches; } catch (e) { return false; } }
+  var pt = 0;
+  function posture() {
+    pt = 0;
+    var dp = navigator.devicePosture && navigator.devicePosture.type, folded = dp === "folded" || mq("(device-posture: folded)");
+    var v2 = mq("(vertical-viewport-segments: 2)"), h2 = mq("(horizontal-viewport-segments: 2)");
+    var pr = gm().posture !== false;
+    var lap = pr && folded && !h2, book = pr && h2;
+    var h = innerHeight, top = h / 2, bot = h / 2 + 10;
+    if (lap) {
+      var probe = document.createElement("div"); probe.style.cssText = "position:fixed;visibility:hidden;left:0;top:0;width:0;height:env(viewport-segment-height 0 0,0px);padding-top:env(viewport-segment-top 0 1,0px)";
+      document.body.appendChild(probe); var seg = probe.getBoundingClientRect().height, bt = parseFloat(getComputedStyle(probe).paddingTop) || 0; probe.remove();
+      if (v2 && seg > 100) { top = seg; bot = bt > top ? bt : top + 10; }
+    }
+    root.style.setProperty("--fv-lt", Math.round(top) + "px"); root.style.setProperty("--fv-lb", Math.round(bot) + "px");
+    if (book) {
+      var p2 = document.createElement("div"); p2.style.cssText = "position:fixed;visibility:hidden;left:0;top:0;width:env(viewport-segment-width 0 0,0px)"; document.body.appendChild(p2);
+      var sw0 = p2.getBoundingClientRect().width; p2.remove(); root.style.setProperty("--fv-book-r", Math.round(sw0 > 100 ? sw0 : innerWidth / 2) + "px");
+    }
+    var sig = [lap, book, folded, Math.round(top), Math.round(bot)].join("|"), changed = sig !== lastSig; lastSig = sig;
+    root.classList.toggle("fv-lap", lap); root.classList.toggle("fv-book", book); root.classList.toggle("fv-folded", folded);
+    window.__fvPosture = { type: dp || (folded ? "folded" : "continuous"), api: !!navigator.devicePosture, v2: v2, h2: h2 };
+    var n = document.getElementById("fv-scr"); if (n && !n.querySelector(".fv-post")) { var s = document.createElement("span"); s.className = "fv-post"; s.style.display = "block"; n.appendChild(s); }
+    var s2 = n && n.querySelector(".fv-post"); if (s2) s2.textContent = "Fold: " + window.__fvPosture.type + " · " + (h2 ? "2 side-by-side panes" : v2 ? "2 stacked panes" : "1 pane") + (window.__fvPosture.api ? "" : " · posture API off");
+    if (changed) { try { window.dispatchEvent(new Event("resize")); } catch (e) {} }
+  }
+  var lastSig = "";
+  function sp() { if (!pt) pt = setTimeout(posture, 120); }
+  if (navigator.devicePosture) navigator.devicePosture.addEventListener("change", sp);
+  ["(device-posture: folded)", "(horizontal-viewport-segments: 2)", "(vertical-viewport-segments: 2)"].forEach(function (q) { try { matchMedia(q).addEventListener("change", sp); } catch (e) {} });
+  addEventListener("resize", sp); posture();
+  new MutationObserver(function () { var n = document.getElementById("fv-scr"); if (n && !n.querySelector(".fv-post")) sp(); }).observe(document.body, { childList: true, subtree: true });
 })();
 </script>
 <script>(function(){try{if("serviceWorker"in navigator&&/^https?:$/.test(location.protocol)){addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{scope:"./"}).catch(function(){})})}}catch(e){}})();</script>
