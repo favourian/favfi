@@ -2418,7 +2418,19 @@ var FavFIEngine = (function () {
       entry.undone = true; saveW(); refreshAll(); if (host && tab === "goals") render(true);
     }).catch(function () {});
   }
-  window.FavFISavings = { open: function (o) { if (!W) loadW(); savingsSheet(o || {}); }, stats: function () { if (!W) { try { loadW(); } catch (e) { return { month: 0, year: 0, total: 0, count: 0 }; } } return savStats(); } };
+  function quickSavings(v, assetId) {
+    if (!W) loadW();
+    var d = data() || {}, a = (d.assets || []).filter(function (x) { return x.id === assetId; })[0];
+    if (!a || !(v > 0)) return Promise.reject(new Error("bad"));
+    var entry = { id: Date.now(), ts: new Date().toISOString(), amt: v, note: "", goal: "", goalId: null, bumpGoal: false, asset: a.id, acct: a.name };
+    return api("PUT", "/api/assets/" + a.id, { name: a.name, type: a.type, value: (+a.value || 0) + v }).then(function () {
+      savLog().push(entry); saveW(); refreshAll(); fx("big");
+      toast("Saved " + fmt(v) + " to " + esc(a.name) + ".", "Undo", function () { undoSavings(entry); });
+      if (host && tab === "goals") { render(true); setTimeout(function () { animateRings(false); }, 30); }
+      checkGoalMilestones();
+    });
+  }
+  window.FavFISavings = { quick: function (v, id) { return quickSavings(v, id); }, open: function (o) { if (!W) loadW(); savingsSheet(o || {}); }, stats: function () { if (!W) { try { loadW(); } catch (e) { return { month: 0, year: 0, total: 0, count: 0 }; } } return savStats(); } };
 
   ACT.goaladd = function (t) { var i = t.getAttribute("data-tpl"); goalSheet(null, i === null ? null : +i); };
   ACT["goaladd$"] = function (t) { savingsSheet({ goal: +t.getAttribute("data-i") }); };
@@ -3047,7 +3059,9 @@ var FavFIEngine = (function () {
     P("background-color", dk ? "#262422" : "#fcfbf7"); P("background-image", "none"); P("-webkit-backdrop-filter", "none"); P("backdrop-filter", "none"); P("mix-blend-mode", "normal");
     P("--card", dk ? "30 6% 17%" : "48 30% 98%"); P("--muted", dk ? "30 6% 20%" : "40 14% 93%"); P("--border", dk ? "30 6% 24%" : "44 16% 87%"); P("--popover", dk ? "30 6% 14%" : "48 40% 99%");
     P("width", pw + "px");
-    d.style.setProperty("max-height", Math.max(short ? 160 : 260, short ? br.top - 16 : vh - y - 16) + "px", "important");
+    var maxH = Math.max(short ? 160 : 260, short ? br.top - 16 : vh - y - 16);
+    if (document.documentElement.classList.contains("fv-lap")) { var lb = parseFloat(document.documentElement.style.getPropertyValue("--fv-lb")) || vh / 2; y = lb + 8; maxH = Math.max(200, vh - lb - 52); w.style.setProperty("--fv-py", Math.round(y) + "px"); }
+    d.style.setProperty("max-height", maxH + "px", "important");
   }
   (function () {
     var rafs = 0;
@@ -3670,7 +3684,14 @@ var FavFIEngine = (function () {
     "html.fv-lap.fv-rail main,html.fv-lap.fv-rail div.shrink-0.relative.z-10{padding-right:max(16px,env(safe-area-inset-right,0px))!important;padding-left:max(16px,env(safe-area-inset-left,0px))!important}html.fv-lap.fv-rail.fv-short main{padding-bottom:24px!important}" +
     "html.fv-lap .fixed.inset-0.-z-10>img{opacity:0!important}html.fv-lap .page-title{font-size:24px!important}html.fv-lap div.shrink-0.relative.z-10 header p{display:none!important}" +
     "html.fv-lap .fv-sheet{top:var(--fv-lb)!important;bottom:0!important}html.fv-lap .fv-sheet>.fv-card{max-height:calc(100vh - var(--fv-lb) - 12px)!important}" +
-    "html.fv-lap #fv-qa{top:calc(var(--fv-lb) + 12px)!important;bottom:auto!important;right:calc(var(--fv-r) + 64px)!important}" +
+    "html.fv-lap .fv-toast{bottom:auto!important;top:calc(var(--fv-lb) - 84px)!important}" +
+    "html.fv-lap #fv-qa{display:none!important}html.fv-kb .fv-dock{display:none!important}" +
+    ".fv-dock{position:fixed;z-index:40;left:max(12px,env(safe-area-inset-left,0px));right:calc(var(--fv-r) + 72px);top:calc(var(--fv-lb) + 10px);bottom:calc(var(--fv-b) + 62px);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:12px;padding:12px;border-radius:26px;background:hsl(var(--card));border:1px solid hsl(var(--border));box-shadow:0 8px 28px rgba(40,30,10,.1);animation:fvIn .3s ease both}html.dark .fv-dock{box-shadow:0 10px 30px rgba(0,0,0,.4)}" +
+    ".fv-dock .kp{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;gap:8px;min-height:0}.fv-dock .kp button{border:0;border-radius:16px;background:hsl(var(--muted)/.65);font:500 24px var(--app-font-serif,Georgia,serif);color:hsl(var(--foreground));transition:transform .12s}.fv-dock .kp button:active{transform:scale(.93);background:hsl(var(--muted))}" +
+    ".fv-dock .rt{display:flex;flex-direction:column;gap:10px;min-width:0}.fv-dock .sg{display:flex;gap:4px;padding:3px;border-radius:13px;background:hsl(var(--muted)/.6)}.fv-dock .sg button{flex:1;border:0;border-radius:10px;min-height:36px;background:transparent;color:hsl(var(--muted-foreground));font:600 13.5px system-ui}.fv-dock .sg button[aria-pressed=true]{background:hsl(var(--card));color:hsl(var(--foreground));box-shadow:0 1px 3px rgba(0,0,0,.12)}" +
+    ".fv-dock .am{font:500 38px var(--app-font-serif,Georgia,serif);text-align:center;letter-spacing:-.01em;min-height:48px;line-height:48px;color:hsl(var(--foreground));white-space:nowrap;overflow:hidden}.fv-dock .am.z{color:hsl(var(--muted-foreground)/.55)}.fv-dock .am.ok{color:hsl(var(--primary));font:600 20px system-ui}" +
+    ".fv-dock .cs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px 0}.fv-dock .cs::-webkit-scrollbar{display:none}.fv-dock .cs button{flex:none;border:1px solid hsl(var(--border));background:hsl(var(--card));border-radius:999px;padding:0 13px;min-height:34px;font:500 13.5px system-ui;color:hsl(var(--foreground))}.fv-dock .cs button[aria-pressed=true]{background:hsl(var(--primary)/.14);border-color:hsl(var(--primary)/.45);color:hsl(var(--primary))}" +
+    ".fv-dock .go{margin-top:auto;border:0;border-radius:16px;min-height:48px;background:hsl(var(--primary));color:hsl(var(--primary-foreground));font:600 16px system-ui}.fv-dock .go:disabled{opacity:.45}" +
     /* book posture (side by side): keep content out of the hinge */
     "html.fv-book.fv-rail main,html.fv-book.fv-rail div.shrink-0.relative.z-10{padding-right:max(calc(var(--fv-r) + 68px),calc(100vw - var(--fv-book-r) + 12px))!important}";
   document.head.appendChild(css);
@@ -3767,6 +3788,41 @@ var FavFIEngine = (function () {
   setInterval(function () { strip(); checkin(); }, 900);
   addEventListener("hashchange", function () { svSig = ""; setTimeout(function () { strip(); checkin(); }, 200); });
 
+
+  /* ---------- laptop posture: a quick-add keypad in the lower half ---------- */
+  var DCATS = ["Food", "Housing", "Transport", "Subscriptions", "Utilities", "Health", "Personal", "Car", "Other"];
+  var dk = { mode: "ex", amt: "", cat: "Food", acct: null, flash: "" };
+  function fmtAmt(a) { var p = a.split("."), i = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ","); return "$" + i + (p.length > 1 ? "." + p[1] : ""); }
+  function dockRender(box) {
+    var d = data() || {}, liquid = /sav|check|cash/i, accts = (d.assets || []).slice().sort(function (a, b) { return (liquid.test(b.type || "") ? 1 : 0) - (liquid.test(a.type || "") ? 1 : 0); }).slice(0, 6);
+    if (dk.acct == null || !accts.some(function (a) { return a.id === dk.acct; })) dk.acct = accts[0] ? accts[0].id : null;
+    var n = dk.amt ? Number(dk.amt) : 0, shown = dk.flash || (dk.amt ? fmtAmt(dk.amt) : "$0");
+    var keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "⌫"].map(function (k) { return "<button type='button' data-k='" + k + "' aria-label='" + (k === "⌫" ? "Delete" : k === "." ? "Decimal point" : k) + "'>" + k + "</button>"; }).join("");
+    var chips = dk.mode === "ex" ? DCATS.map(function (c) { return "<button type='button' data-c='" + c + "' aria-pressed='" + (c === dk.cat) + "'>" + c + "</button>"; }).join("") : (accts.length ? accts.map(function (a) { return "<button type='button' data-a='" + a.id + "' aria-pressed='" + (a.id === dk.acct) + "'>" + esc(a.name) + "</button>"; }).join("") : "<span style='font-size:13px;color:hsl(var(--muted-foreground))'>Add an account first</span>");
+    box.innerHTML = "<div class='kp'>" + keys + "</div><div class='rt'><div class='sg'><button type='button' data-m='ex' aria-pressed='" + (dk.mode === "ex") + "'>Expense</button><button type='button' data-m='sv' aria-pressed='" + (dk.mode === "sv") + "'>Savings</button></div><div class='am" + (dk.flash ? " ok" : dk.amt ? "" : " z") + "' aria-live='polite'>" + esc(shown) + "</div><div class='cs'>" + chips + "</div><button type='button' class='go'" + (n > 0 && !dk.busy ? "" : " disabled") + ">" + (dk.mode === "ex" ? "Add expense" : "Add savings") + "</button></div>";
+  }
+  function dockSubmit(box) {
+    var n = Number(dk.amt); if (!(n > 0) || dk.busy) return; dk.busy = true; dockRender(box);
+    var p = dk.mode === "ex" ? fetch("/api/expenses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: dk.cat, amount: n, category: dk.cat, isFixed: false }) }).then(function (r) { if (!r.ok) throw new Error("x"); try { window.__qc && window.__qc.invalidateQueries(); } catch (e) {} }) : (window.FavFISavings ? window.FavFISavings.quick(n, dk.acct) : Promise.reject());
+    p.then(function () { dk.amt = ""; dk.busy = false; dk.flash = dk.mode === "ex" ? "Added to " + dk.cat : "Saved"; fx("ok"); try { var r = box.querySelector(".am").getBoundingClientRect(); window.FavFIFx && window.FavFIFx.sparkle(r.left + r.width / 2, r.top + r.height / 2); } catch (e) {} dockRender(box); setTimeout(function () { dk.flash = ""; if (box.isConnected) dockRender(box); }, 1300); }).catch(function () { dk.busy = false; dk.flash = ""; dockRender(box); });
+  }
+  function dock() {
+    var box = document.getElementById("fv-dock"), on = root.classList.contains("fv-lap") && !document.getElementById("favfi-lock");
+    if (!on) { if (box) box.remove(); return; }
+    if (box) return;
+    box = document.createElement("div"); box.id = "fv-dock"; box.className = "fv-dock"; box.setAttribute("role", "group"); box.setAttribute("aria-label", "Quick add");
+    box.addEventListener("click", function (e) {
+      var b = e.target.closest("button"); if (!b || b.disabled) return;
+      if (b.hasAttribute("data-k")) { var k = b.getAttribute("data-k"); fx("ok"); dk.flash = "";
+        if (k === "⌫") dk.amt = dk.amt.slice(0, -1); else if (k === ".") { if (dk.amt.indexOf(".") < 0) dk.amt = (dk.amt || "0") + "."; } else if (dk.amt.length < 9 && !/\.\d\d$/.test(dk.amt)) dk.amt = dk.amt === "0" ? k : dk.amt + k; }
+      else if (b.hasAttribute("data-m")) { dk.mode = b.getAttribute("data-m"); dk.flash = ""; }
+      else if (b.hasAttribute("data-c")) dk.cat = b.getAttribute("data-c");
+      else if (b.hasAttribute("data-a")) dk.acct = +b.getAttribute("data-a");
+      else if (b.classList.contains("go")) { dockSubmit(box); return; }
+      dockRender(box);
+    });
+    document.body.appendChild(box); dockRender(box);
+  }
   /* ---------- fold / posture ---------- */
   function mq(q) { try { return matchMedia(q).matches; } catch (e) { return false; } }
   var pt = 0;
@@ -3792,6 +3848,7 @@ var FavFIEngine = (function () {
     window.__fvPosture = { type: dp || (folded ? "folded" : "continuous"), api: !!navigator.devicePosture, v2: v2, h2: h2 };
     var n = document.getElementById("fv-scr"); if (n && !n.querySelector(".fv-post")) { var s = document.createElement("span"); s.className = "fv-post"; s.style.display = "block"; n.appendChild(s); }
     var s2 = n && n.querySelector(".fv-post"); if (s2) s2.textContent = "Fold: " + window.__fvPosture.type + " · " + (h2 ? "2 side-by-side panes" : v2 ? "2 stacked panes" : "1 pane") + (window.__fvPosture.api ? "" : " · posture API off");
+    dock();
     if (changed) { try { window.dispatchEvent(new Event("resize")); } catch (e) {} }
   }
   var lastSig = "";
