@@ -3461,6 +3461,12 @@ var FavFIEngine = (function () {
   function pose() {
     t = 0;
     var vv = window.visualViewport, w = Math.round(vv ? vv.width : innerWidth), h = Math.round(vv ? vv.height : innerHeight);
+    /* mid-fold the browser can briefly report 0: fall back, and measure again once things settle */
+    if (!(w > 100)) w = Math.round(innerWidth || document.documentElement.clientWidth || 0);
+    if (!(h > 100)) h = Math.round(innerHeight || document.documentElement.clientHeight || 0);
+    if (!(w > 100) || !(h > 100)) { clearTimeout(retry); retry = setTimeout(sched, 150); return; }
+    /* the on-screen keyboard shrinks the visual viewport: size the layout from the full window so it does not flip */
+    var fullH = Math.round(Math.max(h, innerHeight || 0)); if (fullH > h) h = fullH;
     var p = w <= 520 ? "cover" : w < 1024 ? "mid" : "wide";
     root.classList.toggle("fv-cover", p === "cover"); root.classList.toggle("fv-mid", p === "mid"); root.classList.toggle("fv-wide", p === "wide");
     var navPos = ""; try { navPos = (JSON.parse(localStorage.getItem("favfi:meta:v1") || "{}") || {}).navPos || ""; } catch (e) {}
@@ -3473,7 +3479,8 @@ var FavFIEngine = (function () {
     }
     last = p; lastW = w; readout();
   }
-  function sched() { if (!t) t = requestAnimationFrame(pose); }
+  var retry = 0, settle = 0;
+  function sched() { if (!t) t = requestAnimationFrame(pose); clearTimeout(settle); settle = setTimeout(function () { t = 0; pose(); }, 450); }
   addEventListener("resize", sched); addEventListener("orientationchange", sched);
   if (window.visualViewport) visualViewport.addEventListener("resize", sched);
   addEventListener("hashchange", function () { root.classList.remove("fv-hdr-min"); });
@@ -3571,6 +3578,61 @@ var FavFIEngine = (function () {
     /* short windows are decided by height and shape, not rotation */
     "@media (max-height:480px) and (min-aspect-ratio:3/2){nav.md\\:hidden a>div{padding-top:5px!important;padding-bottom:5px!important;min-width:64px!important}nav.md\\:hidden span{display:none!important}main{padding-top:8px!important}.page-title{font-size:26px!important;line-height:1.15!important}}";
   document.head.appendChild(css);
+})();
+
+/* ---- keyboard-aware sheets, panel/button stacking, fold-safe state, comfortable touch targets ---- */
+(function () {
+  var root = document.documentElement;
+  var css = document.createElement("style"); css.id = "fv-x9";
+  css.textContent =
+    /* sheets rise above the keyboard and never grow taller than what is visible */
+    ".fv-sheet{bottom:var(--fv-kb,0px)!important;transition:bottom .2s ease}" +
+    ".fv-sheet>.fv-card{max-height:calc(var(--fv-vh,100vh) - 16px)!important;overscroll-behavior:contain;padding-bottom:max(22px,env(safe-area-inset-bottom,0px))}" +
+    "html.fv-kb .fv-sheet>.fv-card{padding-bottom:16px}" +
+    ".fv-sheet>.fv-card>.row{position:sticky;bottom:calc(-1 * max(22px,env(safe-area-inset-bottom,0px)));z-index:2;background:hsl(var(--card));margin:0 -4px;padding:10px 4px 2px;box-shadow:0 -10px 12px -8px hsl(var(--card))}html.fv-kb .fv-sheet>.fv-card>.row{bottom:-16px}" +
+    /* the preferences / notifications panel sits above the floating buttons while it is open */
+    "html.fv-panel-open #favfi-backup-fab,html.fv-panel-open #fv-qa{opacity:0!important;pointer-events:none!important;transition:opacity .15s}" +
+    /* label and control stack when the row is narrow */
+    "#fv-navrow{flex-wrap:wrap!important}#fv-navrow>.fv-pt{flex:1 1 100%!important}#fv-navrow>.fv-seg{flex:1 1 100%;margin-top:10px}#fv-navrow .fv-seg button{flex:1}" +
+    /* touch targets: at least 44pt to hit, without changing how things look */
+    "@media (pointer:coarse){" +
+    "input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=file]),select,textarea{min-height:44px}" +
+    "button,[role=button],[role=tab],[role=switch],[role=menuitem],a[href],summary,select,input[type=checkbox],input[type=radio]{position:relative}" +
+    ".fv-tt::after{content:'';position:absolute;left:50%;top:50%;width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}" +
+    "}";
+  document.head.appendChild(css);
+
+  /* keyboard height from the visual viewport */
+  var vv = window.visualViewport, raf = 0, lastKb = -1, lastVh = -1;
+  function kb() {
+    raf = 0; vv = window.visualViewport; if (!vv) return;
+    var full = Math.max(innerHeight || 0, document.documentElement.clientHeight || 0);
+    var k = Math.max(0, Math.round(full - vv.height - vv.offsetTop)); if (k < 80) k = 0; /* ignore browser chrome wobble */
+    var vh = Math.round(vv.height);
+    if (k !== lastKb) { lastKb = k; root.style.setProperty("--fv-kb", k + "px"); root.classList.toggle("fv-kb", k > 0); }
+    if (vh !== lastVh) { lastVh = vh; root.style.setProperty("--fv-vh", vh + "px"); }
+    if (k > 0) { var a = document.activeElement; if (a && a.closest && a.closest(".fv-sheet") && /INPUT|TEXTAREA/.test(a.tagName)) setTimeout(function () { try { a.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (e) {} }, 60); }
+  }
+  function sk() { if (!raf) raf = requestAnimationFrame(kb); }
+  if (vv) { vv.addEventListener("resize", sk); vv.addEventListener("scroll", sk); }
+  addEventListener("focusin", function (e) { if (e.target && e.target.closest && e.target.closest(".fv-sheet")) { setTimeout(sk, 250); setTimeout(sk, 600); } });
+  addEventListener("focusout", function () { setTimeout(sk, 200); });
+  addEventListener("resize", sk); kb();
+
+  /* panel open => hide floating buttons that would overlap it */
+  var pt = 0;
+  function panel() { pt = 0; root.classList.toggle("fv-panel-open", !!document.querySelector(".fv-np")); }
+  new MutationObserver(function () { if (!pt) pt = setTimeout(panel, 80); }).observe(document.body, { childList: true });
+
+  /* tag small tap targets so they get a bigger invisible hit area (only matters on touch) */
+  var tt = 0;
+  function tag() {
+    tt = 0; if (!matchMedia("(pointer:coarse)").matches) return;
+    var list = document.querySelectorAll("button:not(.fv-tt),[role=tab]:not(.fv-tt),[role=switch]:not(.fv-tt),a[href]:not(.fv-tt),summary:not(.fv-tt)");
+    for (var i = 0; i < list.length; i++) { var r = list[i].getBoundingClientRect(); if (r.width && r.height && (r.width < 44 || r.height < 44)) list[i].classList.add("fv-tt"); else if (r.width) list[i].classList.add("fv-tt-ok"); }
+  }
+  function st() { if (!tt) tt = setTimeout(tag, 400); }
+  new MutationObserver(st).observe(document.body, { childList: true, subtree: true }); addEventListener("hashchange", st); st();
 })();
 </script>
 <script>(function(){try{if("serviceWorker"in navigator&&/^https?:$/.test(location.protocol)){addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{scope:"./"}).catch(function(){})})}}catch(e){}})();</script>
