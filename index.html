@@ -2949,13 +2949,16 @@ var FavFIEngine = (function () {
     w.classList.add("fv-np");
     var bell = [].slice.call(document.querySelectorAll("button")).filter(function (b) { return b.querySelector("svg.lucide-bell") && b.getBoundingClientRect().width > 0; })[0];
     var vw = innerWidth, vh = innerHeight, pw = Math.min(364, vw - 24), br = bell ? bell.getBoundingClientRect() : { left: 12, bottom: 70 };
-    var x = Math.max(12, Math.min(br.left - 14, vw - pw - 12)), y = Math.min(br.bottom + 10, vh - 200);
-    w.style.setProperty("transform", "translate(" + Math.round(x) + "px," + Math.round(y) + "px)", "important");
+    var rail = document.documentElement.classList.contains("fv-rail");
+    if (rail) pw = Math.min(364, vw - 24 - 66);
+    var x = rail ? Math.max(12, vw - pw - 66 - 8) : Math.max(12, Math.min(br.left - 14, vw - pw - 12)), y = rail ? Math.max(8, br.top) : Math.min(br.bottom + 10, vh - 200), short = rail && br.top > vh / 2;
+    if (short) y = Math.max(8, br.top - 8 - Math.min(d.offsetHeight || 260, br.top - 16));
+    w.style.setProperty("--fv-px", Math.round(x) + "px"); w.style.setProperty("--fv-py", Math.round(y) + "px");
     var dk = document.documentElement.classList.contains("dark"), P = function (k, v) { d.style.setProperty(k, v, "important"); };
     P("background-color", dk ? "#262422" : "#fcfbf7"); P("background-image", "none"); P("-webkit-backdrop-filter", "none"); P("backdrop-filter", "none"); P("mix-blend-mode", "normal");
     P("--card", dk ? "30 6% 17%" : "48 30% 98%"); P("--muted", dk ? "30 6% 20%" : "40 14% 93%"); P("--border", dk ? "30 6% 24%" : "44 16% 87%"); P("--popover", dk ? "30 6% 14%" : "48 40% 99%");
     P("width", pw + "px");
-    d.style.setProperty("max-height", Math.max(260, vh - y - 16) + "px", "important");
+    d.style.setProperty("max-height", Math.max(short ? 160 : 260, short ? br.top - 16 : vh - y - 16) + "px", "important");
   }
   (function () {
     var rafs = 0;
@@ -3008,7 +3011,7 @@ var FavFIEngine = (function () {
   css.textContent += "html.fv-hide .fv-amt:not(.fv-peek),html.fv-hide input[inputmode=decimal]{filter:blur(7px);user-select:none}.fv-amt{transition:filter .25s}" +
     "[data-radix-popper-content-wrapper] [role=dialog]{background:hsl(var(--popover))!important;backdrop-filter:none!important;max-height:var(--radix-popover-content-available-height,80vh);overflow-y:auto;overscroll-behavior:contain}" +
     ".fv-one{display:flex;align-items:center;gap:14px;padding:6px 0}.fv-one i{width:14px;height:14px;border-radius:50%;background:hsl(152 30% 36%);box-shadow:0 0 0 6px hsl(152 30% 36%/.16)}.fv-one b{display:block;font:500 24px var(--app-font-serif)}.fv-one span{font-size:13px;color:hsl(var(--muted-foreground))}" +
-    "[data-radix-popper-content-wrapper] [role=dialog]{background:#262422!important;border:1px solid hsl(var(--border))!important;border-radius:22px!important;box-shadow:0 22px 60px rgba(0,0,0,.45),0 2px 8px rgba(0,0,0,.25)!important}html:not(.dark) [data-radix-popper-content-wrapper] [role=dialog]{background:#fcfbf7!important;box-shadow:0 22px 60px rgba(60,45,20,.2),0 2px 8px rgba(60,45,20,.08)!important}" +
+    "[data-radix-popper-content-wrapper].fv-np{transform:none!important;left:var(--fv-px,12px)!important;top:var(--fv-py,80px)!important}[data-radix-popper-content-wrapper] [role=dialog]{background:#262422!important;border:1px solid hsl(var(--border))!important;border-radius:22px!important;box-shadow:0 22px 60px rgba(0,0,0,.45),0 2px 8px rgba(0,0,0,.25)!important}html:not(.dark) [data-radix-popper-content-wrapper] [role=dialog]{background:#fcfbf7!important;box-shadow:0 22px 60px rgba(60,45,20,.2),0 2px 8px rgba(60,45,20,.08)!important}" +
     ".fv-np [role=dialog]>.p-3\\.5{padding:18px 18px 12px!important;border-bottom:0!important}.fv-np h3{font:500 21px var(--app-font-serif)!important;letter-spacing:-.01em}" +
     ".fv-np [role=dialog] .rounded-xl.p-0\\.5{background:hsl(var(--muted)/.7)!important;padding:3px!important;border-radius:14px!important}.fv-np [role=dialog] .rounded-xl.p-0\\.5 button{font-size:13px!important;padding:8px 0!important;border-radius:11px!important;min-height:36px;color:hsl(var(--muted-foreground))}.fv-np [role=dialog] .rounded-xl.p-0\\.5 button.bg-card{background:hsl(var(--primary)/.16)!important;color:hsl(var(--primary))!important;box-shadow:none!important;font-weight:600}html.dark .fv-np [role=dialog] .rounded-xl.p-0\\.5 button.bg-card{color:hsl(150 30% 70%)!important}" +
     ".fv-np [role=dialog] .text-xs.text-muted-foreground.mb-4{font-size:13px!important;margin-bottom:6px!important}.fv-np [role=dialog] .p-4{padding:4px 18px 18px!important}.fv-np [role=dialog] .bg-emerald-500{background:hsl(var(--primary))!important}.fv-np [role=dialog] .bg-amber-500{background:hsl(var(--chart-3))!important}.fv-np [role=dialog] [class*=bg-blue],.fv-np [role=dialog] .bg-primary.rounded-full.w-2{background:hsl(var(--primary))!important}.fv-np [role=dialog] .bg-blue-500{background:hsl(150 28% 64%)!important}.fv-np [role=dialog] [class*=text-blue],.fv-np [role=dialog] [class*=text-indigo]{color:hsl(var(--primary))!important}.fv-np [role=dialog] *{border-color:hsl(var(--border)/.6)}" +
@@ -3366,10 +3369,10 @@ var FavFIEngine = (function () {
   function pose() {
     t = 0;
     var vv = window.visualViewport, w = Math.round(vv ? vv.width : innerWidth), h = Math.round(vv ? vv.height : innerHeight);
-    var p = w <= 520 ? "cover" : w < 900 ? "mid" : "wide";
+    var p = w <= 520 ? "cover" : w < 1024 ? "mid" : "wide";
     root.classList.toggle("fv-cover", p === "cover"); root.classList.toggle("fv-mid", p === "mid"); root.classList.toggle("fv-wide", p === "wide");
     var navPos = ""; try { navPos = (JSON.parse(localStorage.getItem("favfi:meta:v1") || "{}") || {}).navPos || ""; } catch (e) {}
-    root.classList.toggle("fv-rail", navPos !== "bottom" && (p === "cover" || h <= 480));
+    root.classList.toggle("fv-rail", navPos !== "classic" && (w < 1024 || h <= 480));
     root.classList.toggle("fv-tall", h / w >= 1.35); root.classList.toggle("fv-short", h <= 480);
     root.setAttribute("data-fv-pose", p); root.setAttribute("data-fv-size", w + "x" + h);
     if (last && last !== p) {
@@ -3381,6 +3384,7 @@ var FavFIEngine = (function () {
   function sched() { if (!t) t = requestAnimationFrame(pose); }
   addEventListener("resize", sched); addEventListener("orientationchange", sched);
   if (window.visualViewport) visualViewport.addEventListener("resize", sched);
+  addEventListener("hashchange", function () { root.classList.remove("fv-hdr-min"); });
   pose();
 
   /* floating buttons step aside while you scroll down, return when you scroll up */
@@ -3392,6 +3396,7 @@ var FavFIEngine = (function () {
       tick = 0; var y = pos(ev), d = y - y0;
       if (Math.abs(d) < 8) return;
       root.classList.toggle("fv-scrolldown", d > 0 && y > 60); y0 = y;
+      if (y > 40) root.classList.add("fv-hdr-min"); else if (y < 10) root.classList.remove("fv-hdr-min");
     });
   }, { passive: true, capture: true });
 
@@ -3403,14 +3408,23 @@ var FavFIEngine = (function () {
     var ins = ["top", "right", "bottom", "left"].map(function (s) { var d = document.createElement("div"); d.style.cssText = "position:fixed;visibility:hidden;padding-" + s + ":env(safe-area-inset-" + s + ",0px)"; document.body.appendChild(d); var v = parseFloat(getComputedStyle(d)["padding" + s.charAt(0).toUpperCase() + s.slice(1)]) || 0; d.remove(); return Math.round(v); });
     n.innerHTML = "<b>This screen</b><span>" + root.getAttribute("data-fv-size").replace("x", " × ") + " · " + names[root.getAttribute("data-fv-pose")] + " layout" + (ins.some(Boolean) ? " · edges " + ins.join("/") : "") + "</span>";
   }
-  function labelNav() { [].forEach.call(document.querySelectorAll("nav.md\\:hidden a"), function (a) { if (a.getAttribute("aria-label")) return; var sp = a.querySelector("span"); if (sp) { a.setAttribute("aria-label", sp.textContent.trim()); a.setAttribute("title", sp.textContent.trim()); } }); }
+  /* turn the sidebar's bell into a standalone round button: keep it, hide everything else in that sidebar */
+  function tagBell() {
+    var nav = document.querySelector("nav.fixed.lg\\:flex"); if (!nav) return;
+    var ic = nav.querySelector("button svg.lucide-bell"), bell = ic && ic.closest("button"); if (!bell) return;
+    if (!bell.classList.contains("fv-bell")) bell.classList.add("fv-bell");
+    var chain = [], n = bell; while (n && n !== nav) { chain.push(n); n = n.parentElement; }
+    chain.forEach(function (a) { if (a !== bell) a.classList.add("fv-keep"); var p = a.parentElement; if (!p) return; [].forEach.call(p.children, function (c) { if (chain.indexOf(c) < 0 && !c.classList.contains("fv-hide")) c.classList.add("fv-hide"); }); });
+    [].forEach.call(bell.parentElement ? bell.parentElement.children : [], function () {});
+  }
+  function labelNav() { tagBell(); [].forEach.call(document.querySelectorAll("nav.md\\:hidden a"), function (a) { if (a.getAttribute("aria-label")) return; var sp = a.querySelector("span"); if (sp) { a.setAttribute("aria-label", sp.textContent.trim()); a.setAttribute("title", sp.textContent.trim()); } }); }
   function navRow() {
     var box = document.getElementById("fv-prefs"); if (!box || document.getElementById("fv-navrow")) return;
-    var cur = "side"; try { cur = (JSON.parse(localStorage.getItem("favfi:meta:v1") || "{}") || {}).navPos === "bottom" ? "bottom" : "side"; } catch (e) {}
+    var cur = "side"; try { cur = (JSON.parse(localStorage.getItem("favfi:meta:v1") || "{}") || {}).navPos === "classic" ? "classic" : "side"; } catch (e) {}
     var row = document.createElement("div"); row.id = "fv-navrow"; row.className = "fv-pr";
-    row.innerHTML = "<div class='fv-pt'><b>Navigation on small screens</b><span>Side rail keeps your thumb near the edge and frees the bottom</span></div>";
+    row.innerHTML = "<div class='fv-pt'><b>Navigation on small and medium screens</b><span>Side rail keeps your thumb near the edge and frees the bottom. Classic uses the bottom bar and sidebar.</span></div>";
     var seg = document.createElement("div"); seg.className = "fv-seg"; seg.setAttribute("role", "group");
-    [["side", "Side"], ["bottom", "Bottom"]].forEach(function (o) {
+    [["side", "Side rail"], ["classic", "Classic"]].forEach(function (o) {
       var bt = document.createElement("button"); bt.type = "button"; bt.textContent = o[1]; bt.setAttribute("aria-pressed", cur === o[0] ? "true" : "false");
       bt.onclick = function () { try { var m = JSON.parse(localStorage.getItem("favfi:meta:v1") || "{}") || {}; m.navPos = o[0]; localStorage.setItem("favfi:meta:v1", JSON.stringify(m)); } catch (e) {} [].forEach.call(seg.children, function (c) { c.setAttribute("aria-pressed", "false"); }); bt.setAttribute("aria-pressed", "true"); pose(); try { window.FavFIFx && FavFIFx.haptic(); } catch (e) {} };
       seg.appendChild(bt);
@@ -3419,22 +3433,6 @@ var FavFIEngine = (function () {
   }
   new MutationObserver(function () { if (document.getElementById("fv-prefs")) { if (!document.getElementById("fv-scr")) readout(); navRow(); } labelNav(); }).observe(document.body, { childList: true, subtree: true });
   labelNav();
-
-  /* inner screen: give mid-width windows the same sidebar layout as a tablet (clone the app's 768px rules down to 680px) */
-  (function () {
-    var out = [];
-    function walk(rs, inMd) {
-      for (var j = 0; j < rs.length; j++) {
-        var r = rs[j], txt = r.conditionText || (r.media && r.media.mediaText) || "";
-        if (r.type === 4) { walk(r.cssRules, /min-width:\s*(768px|48rem)/.test(txt) && !/max-width|height|orientation/.test(txt)); }
-        else if (r.cssRules && !r.selectorText) walk(r.cssRules, inMd);
-        else if (inMd && r.selectorText && /\.md\\:/.test(r.selectorText) && r.style) out.push(r.cssText);
-      }
-    }
-    try { for (var i = 0; i < document.styleSheets.length; i++) { var rs; try { rs = document.styleSheets[i].cssRules; } catch (e) { continue; } walk(rs, false); } } catch (e) {}
-    window.__fvMd = out.length;
-    if (out.length) { var st = document.createElement("style"); st.textContent = "@media (min-width:680px) and (max-width:767.98px){" + out.join("\n") + "}"; document.head.appendChild(st); }
-  })();
 
   var css = document.createElement("style");
   css.textContent =
@@ -3447,22 +3445,37 @@ var FavFIEngine = (function () {
     /* outer screen: calm, compact, nothing covering your numbers */
     "html.fv-cover .page-title{font-size:clamp(25px,7.6vw,32px)!important;line-height:1.12!important}" +
     "html.fv-cover main{padding-left:max(16px,env(safe-area-inset-left))!important;padding-right:max(16px,env(safe-area-inset-right))!important;padding-bottom:calc(150px + env(safe-area-inset-bottom))!important}" +
-    "html.fv-cover #fv-qa{right:max(14px,env(safe-area-inset-right));bottom:calc(92px + env(safe-area-inset-bottom));width:50px;height:50px}" +
-    "html.fv-cover #favfi-backup-fab{right:auto!important;left:-17px!important;bottom:calc(104px + env(safe-area-inset-bottom))!important;width:40px!important;height:40px!important;opacity:.5!important;padding-left:14px!important}html.fv-cover #favfi-backup-fab:active,html.fv-cover #favfi-backup-fab:focus{left:8px!important;padding-left:0!important;opacity:1!important}html.fv-short #favfi-backup-fab{display:none!important}html.fv-short #fv-qa{bottom:calc(66px + env(safe-area-inset-bottom));width:44px;height:44px}" +
     "html.fv-cover .bg-card.rounded-3xl.p-6{padding:18px!important}html.fv-cover .bg-card.rounded-3xl.p-5{padding:16px!important}html.fv-cover .space-y-8>*+*{margin-top:22px!important}html.fv-cover .space-y-6>*+*{margin-top:16px!important}" +
     "html.fv-cover .grid.grid-cols-3 .font-serif{font-size:clamp(15px,4.8vw,20px)!important;white-space:nowrap}" +
     "html.fv-cover .fv-toast{bottom:calc(150px + env(safe-area-inset-bottom))}" +
-    /* side rail (outer screen, and the sideways tent pose): tabs live along the edge like a native vertical bar */
-    "html.fv-rail nav.md\\:hidden{position:fixed!important;top:50%!important;bottom:auto!important;left:auto!important;right:max(10px,env(safe-area-inset-right))!important;transform:translateY(-50%);width:58px!important;max-height:calc(100dvh - 150px);flex-direction:column!important;justify-content:center!important;gap:4px;padding:8px 5px!important;border-radius:29px!important;border:1px solid hsl(var(--border))!important;background:hsl(var(--card)/.96)!important;box-shadow:0 10px 30px rgba(40,30,10,.14),0 1px 3px rgba(40,30,10,.08)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}" +
+    /* ===== side rail: one navigation language for the outer and inner screens (below 1024px, or short windows) ===== */
+    ":root{--fv-r:max(10px,env(safe-area-inset-right,0px));--fv-t:max(12px,env(safe-area-inset-top,0px));--fv-b:max(18px,env(safe-area-inset-bottom,0px))}" +
+    "html.fv-rail nav.fixed.md\\:flex{display:none!important}" +
+    "html.fv-rail nav.md\\:hidden{display:flex!important;position:fixed!important;top:auto!important;left:auto!important;right:var(--fv-r)!important;bottom:calc(var(--fv-b) + 68px)!important;transform:none;width:58px!important;flex-direction:column!important;justify-content:center!important;gap:4px;padding:8px 5px!important;border-radius:29px!important;border:1px solid hsl(var(--border))!important;background:hsl(var(--card)/.97)!important;box-shadow:0 10px 30px rgba(40,30,10,.14),0 1px 3px rgba(40,30,10,.08)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}" +
     "html.dark.fv-rail nav.md\\:hidden{box-shadow:0 12px 32px rgba(0,0,0,.5)!important}" +
-    "html.fv-rail nav.md\\:hidden a>div{min-width:0!important;width:46px;height:46px;padding:0!important;justify-content:center;align-items:center;border-radius:23px!important}html.fv-rail nav.md\\:hidden a>div>div.absolute{border-radius:23px!important}html.fv-rail nav.md\\:hidden a>div svg{width:24px!important;height:24px!important}html.fv-rail nav.md\\:hidden span{display:none!important}html.fv-rail nav.md\\:hidden a>div img{width:30px!important;height:30px!important}" +
-    "html.fv-rail.fv-cover main{padding-right:calc(max(10px,env(safe-area-inset-right)) + 66px)!important;padding-bottom:calc(110px + env(safe-area-inset-bottom))!important}html.fv-rail.fv-short main{padding-right:calc(max(10px,env(safe-area-inset-right)) + 66px)!important;padding-bottom:90px!important}" +
-    "html.fv-rail #fv-qa{right:max(10px,env(safe-area-inset-right))!important;bottom:calc(22px + env(safe-area-inset-bottom))!important;width:58px;height:58px}html.fv-rail.fv-short #fv-qa{width:50px;height:50px;bottom:12px!important}html.fv-rail.fv-short nav.md\\:hidden{top:12px!important;transform:none;max-height:calc(100dvh - 90px)}html.fv-rail.fv-short nav.md\\:hidden a>div{width:40px;height:40px}" +
-    "html.fv-rail #favfi-backup-fab{bottom:calc(22px + env(safe-area-inset-bottom))!important}html.fv-rail .fv-toast{bottom:calc(96px + env(safe-area-inset-bottom))!important}html.fv-rail.fv-scrolldown #fv-qa{transform:none;opacity:1;pointer-events:auto}" +
-    "html.fv-rail.fv-cover .fv-stat{gap:6px!important}html.fv-rail.fv-cover .fv-stat div{padding:9px 7px!important;min-width:0;font-size:10.5px!important;white-space:nowrap}html.fv-rail.fv-cover .fv-stat b{font-size:16px!important}html.fv-rail.fv-cover .grid.grid-cols-3{gap:6px!important}html.fv-rail.fv-cover .grid.grid-cols-3>div{padding:9px 8px!important;min-width:0}html.fv-rail.fv-cover .grid.grid-cols-3 .text-xs{font-size:10.5px!important;white-space:nowrap}html.fv-rail.fv-cover .bg-card.rounded-3xl.p-6{padding:16px!important}" +
-    /* inner screen / mid widths: use the room (two columns) before the sidebar appears */
-    "@media (min-width:600px) and (max-width:767px){.md\\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.md\\:grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.md\\:col-span-2{grid-column:span 2/span 2}.md\\:flex-row{flex-direction:row}}" +
-    "html.fv-mid main{max-width:860px;margin-left:auto;margin-right:auto}" +
+    "html.fv-rail nav.md\\:hidden a>div{min-width:0!important;width:46px;height:46px;padding:0!important;justify-content:center;align-items:center;border-radius:23px!important;transition:transform .2s cubic-bezier(.3,1.4,.5,1)}html.fv-rail nav.md\\:hidden a:active>div{transform:scale(.9)}html.fv-rail nav.md\\:hidden a>div>div.absolute{border-radius:23px!important}html.fv-rail nav.md\\:hidden a>div svg{width:25px!important;height:25px!important}html.fv-rail nav.md\\:hidden span{display:none!important}html.fv-rail nav.md\\:hidden a>div img{width:30px!important;height:30px!important}" +
+    "html.fv-rail nav.md\\:hidden a>div:has(>div.absolute) svg{fill:hsl(var(--primary)/.18);stroke-width:2.2}" +
+    "html.fv-rail .md\\:pl-14{padding-left:0!important}" +
+    /* bell + backup become round utility buttons at the top, like Threads' menu and search */
+    "html.fv-rail nav.fixed.lg\\:flex{display:block!important;position:fixed!important;left:0!important;top:0!important;width:0!important;height:0!important;padding:0!important;border:0!important;background:none!important;box-shadow:none!important;overflow:visible!important;pointer-events:none}" +
+    "html.fv-rail nav.fixed.lg\\:flex .fv-hide{display:none!important}" +
+    "html.fv-rail nav.fixed.lg\\:flex>*,html.fv-rail nav.fixed.lg\\:flex .fv-keep{margin:0!important;padding:0!important;border:0!important;width:auto!important;height:auto!important;background:none!important}" +
+    "html.fv-rail .fv-bell,html.fv-rail #favfi-backup-fab{display:flex!important;position:fixed!important;right:var(--fv-r)!important;left:auto!important;width:48px!important;height:48px!important;padding:0!important;align-items:center;justify-content:center;border-radius:50%!important;border:1px solid hsl(var(--border))!important;background:hsl(var(--card)/.97)!important;box-shadow:0 6px 18px rgba(40,30,10,.12),0 1px 3px rgba(40,30,10,.08)!important;color:hsl(var(--foreground))!important;opacity:1!important;pointer-events:auto;z-index:2147481800;transform:none;transition:transform .2s cubic-bezier(.3,1.4,.5,1)}" +
+    "html.fv-rail .fv-bell{top:var(--fv-t)!important;bottom:auto!important}html.fv-rail #favfi-backup-fab{top:calc(var(--fv-t) + 56px)!important;bottom:auto!important}html.fv-rail .fv-bell:active,html.fv-rail #favfi-backup-fab:active{transform:scale(.9)}html.fv-rail .fv-bell svg,html.fv-rail #favfi-backup-fab svg{width:22px;height:22px}html.fv-rail .fv-bell>span{top:11px!important;right:12px!important}" +
+    "html.dark.fv-rail .fv-bell,html.dark.fv-rail #favfi-backup-fab{box-shadow:0 8px 22px rgba(0,0,0,.45)!important}" +
+    "html.fv-rail #fv-qa{right:var(--fv-r)!important;bottom:var(--fv-b)!important;width:58px;height:58px;transform:none}html.fv-rail.fv-scrolldown #fv-qa{transform:none;opacity:1;pointer-events:auto}" +
+    /* content makes room for the rail; on the roomy inner screen it centres in a calm reading column */
+    "html.fv-rail main,html.fv-rail div.shrink-0.relative.z-10{padding-left:max(16px,env(safe-area-inset-left,0px))!important;padding-right:calc(var(--fv-r) + 68px)!important}html.fv-rail main{padding-bottom:calc(var(--fv-b) + 90px)!important}" +
+    "html.fv-rail.fv-mid main,html.fv-rail.fv-mid div.shrink-0.relative.z-10{padding-left:max(24px,calc((100% - 720px)/2))!important;padding-right:max(calc(var(--fv-r) + 68px),calc((100% - 720px)/2))!important}" +
+    "html.fv-rail .page-title{font-size:clamp(26px,6.4vw,36px)!important;line-height:1.1!important;transition:font-size .3s cubic-bezier(.3,.9,.3,1)}" +
+    "html.fv-rail div.shrink-0.relative.z-10{background:hsl(var(--background)/.95)!important;transition:padding .3s}html.fv-rail div.shrink-0.relative.z-10 header p{max-height:64px;transition:max-height .3s,opacity .25s,margin .3s}" +
+    "html.fv-rail.fv-hdr-min .page-title{font-size:22px!important}html.fv-rail.fv-hdr-min div.shrink-0.relative.z-10 header p{max-height:0;opacity:0;overflow:hidden;margin:0!important}html.fv-rail.fv-hdr-min div.shrink-0.relative.z-10{padding-bottom:6px!important}" +
+    "html.fv-rail .fixed.inset-0.-z-10>div.absolute{display:none}" +
+    "html.fv-rail .fv-toast{bottom:calc(var(--fv-b) + 80px)!important}" +
+    /* tent pose / short windows: rail from the top, round buttons along the bottom */
+    "html.fv-rail.fv-short nav.md\\:hidden{top:var(--fv-t)!important;bottom:auto!important;width:52px!important;padding:6px 4px!important;border-radius:26px!important}html.fv-rail.fv-short nav.md\\:hidden a>div{width:40px;height:40px;border-radius:20px!important}html.fv-rail.fv-short nav.md\\:hidden a>div svg{width:22px!important;height:22px!important}" +
+    "html.fv-rail.fv-short #fv-qa{width:46px;height:46px;bottom:10px!important}html.fv-rail.fv-short .fv-bell,html.fv-rail.fv-short #favfi-backup-fab{top:auto!important;bottom:10px!important;width:44px!important;height:44px!important}html.fv-rail.fv-short .fv-bell{right:calc(var(--fv-r) + 54px)!important}html.fv-rail.fv-short #favfi-backup-fab{right:calc(var(--fv-r) + 106px)!important}" +
+    "html.fv-rail.fv-short main,html.fv-rail.fv-short div.shrink-0.relative.z-10{padding-right:calc(var(--fv-r) + 64px)!important}html.fv-rail.fv-short main{padding-bottom:70px!important}" +
     /* short windows are decided by height and shape, not rotation */
     "@media (max-height:480px) and (min-aspect-ratio:3/2){nav.md\\:hidden a>div{padding-top:5px!important;padding-bottom:5px!important;min-width:64px!important}nav.md\\:hidden span{display:none!important}main{padding-top:8px!important}.page-title{font-size:26px!important;line-height:1.15!important}}";
   document.head.appendChild(css);
