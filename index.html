@@ -2418,19 +2418,20 @@ var FavFIEngine = (function () {
       entry.undone = true; saveW(); refreshAll(); if (host && tab === "goals") render(true);
     }).catch(function () {});
   }
-  function quickSavings(v, assetId) {
+  function quickSavings(v, assetId, goalIdx) {
     if (!W) loadW();
-    var d = data() || {}, a = (d.assets || []).filter(function (x) { return x.id === assetId; })[0];
+    var d = data() || {}, a = (d.assets || []).filter(function (x) { return x.id === assetId; })[0], g = (W.goals || [])[goalIdx];
     if (!a || !(v > 0)) return Promise.reject(new Error("bad"));
-    var entry = { id: Date.now(), ts: new Date().toISOString(), amt: v, note: "", goal: "", goalId: null, bumpGoal: false, asset: a.id, acct: a.name };
+    var entry = { id: Date.now(), ts: new Date().toISOString(), amt: v, note: "", goal: g ? g.name : "", goalId: g ? g.id : null, bumpGoal: !!(g && g.kind !== "efund"), asset: a.id, acct: a.name };
     return api("PUT", "/api/assets/" + a.id, { name: a.name, type: a.type, value: (+a.value || 0) + v }).then(function () {
+      if (entry.bumpGoal) g.saved = (+g.saved || 0) + v;
       savLog().push(entry); saveW(); refreshAll(); fx("big");
-      toast("Saved " + fmt(v) + " to " + esc(a.name) + ".", "Undo", function () { undoSavings(entry); });
+      toast("Saved " + fmt(v) + " to " + esc(a.name) + (entry.goal ? " for " + esc(entry.goal) : "") + ".", "Undo", function () { undoSavings(entry); });
       if (host && tab === "goals") { render(true); setTimeout(function () { animateRings(false); }, 30); }
       checkGoalMilestones();
     });
   }
-  window.FavFISavings = { quick: function (v, id) { return quickSavings(v, id); }, open: function (o) { if (!W) loadW(); savingsSheet(o || {}); }, stats: function () { if (!W) { try { loadW(); } catch (e) { return { month: 0, year: 0, total: 0, count: 0 }; } } return savStats(); } };
+  window.FavFISavings = { quick: function (v, id, gi) { return quickSavings(v, id, gi); }, open: function (o) { if (!W) loadW(); savingsSheet(o || {}); }, stats: function () { if (!W) { try { loadW(); } catch (e) { return { month: 0, year: 0, total: 0, count: 0 }; } } return savStats(); } };
 
   ACT.goaladd = function (t) { var i = t.getAttribute("data-tpl"); goalSheet(null, i === null ? null : +i); };
   ACT["goaladd$"] = function (t) { savingsSheet({ goal: +t.getAttribute("data-i") }); };
@@ -3673,7 +3674,7 @@ var FavFIEngine = (function () {
 
   var css = document.createElement("style"); css.id = "fv-x10";
   css.textContent =
-    ".fv-swp{position:absolute;inset:0;border-radius:inherit;z-index:5;display:flex;align-items:center;padding-left:22px;gap:10px;background:hsl(150 45% 42%/.16);color:hsl(150 45% 28%);font:600 15px system-ui;opacity:0;pointer-events:none}html.dark .fv-swp{color:hsl(150 50% 70%);background:hsl(150 45% 40%/.22)}.fv-swp svg{width:22px;height:22px}" +
+    ".fv-swp{position:absolute;inset:0;border-radius:inherit;z-index:5;display:flex;align-items:center;justify-content:flex-end;padding-right:22px;gap:10px;background:hsl(150 45% 42%/.16);color:hsl(150 45% 28%);font:600 15px system-ui;opacity:0;pointer-events:none}html.dark .fv-swp{color:hsl(150 50% 70%);background:hsl(150 45% 40%/.22)}.fv-swp svg{width:22px;height:22px}" +
     ".fv-sv .fv-bar{height:10px;border-radius:6px;background:hsl(var(--muted));overflow:hidden;margin:12px 0 8px}.fv-sv .fv-bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,hsl(var(--primary)/.75),hsl(var(--primary)));transition:width .8s cubic-bezier(.2,.8,.2,1)}.fv-sv p{margin:0;font-size:13.5px;color:hsl(var(--muted-foreground))}.fv-sv .fv-svh{display:flex;gap:10px;margin-top:12px}.fv-sv .fv-svh button{flex:1}" +
     "html.fv-cover .fv-ci .fv-glh,html.fv-cover .fv-sv .fv-glh{flex-wrap:wrap;row-gap:2px}.fv-ci .fv-glh h3,.fv-sv .fv-glh h3{white-space:nowrap}" +
     ".fv-ci .fv-cis{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}.fv-ci .fv-cis button{border:1px solid hsl(var(--border));background:hsl(var(--card));border-radius:999px;padding:0 16px;min-height:44px;font:600 14px system-ui;color:hsl(var(--foreground))}.fv-ci .fv-cis button[data-d='1']{background:hsl(var(--primary)/.14);border-color:hsl(var(--primary)/.4);color:hsl(var(--primary))}.fv-ci .fv-cid{border:0;background:none;color:hsl(var(--muted-foreground));font:500 13.5px system-ui;min-height:44px;padding:0 4px}" +
@@ -3691,6 +3692,10 @@ var FavFIEngine = (function () {
     ".fv-dock .rt{display:flex;flex-direction:column;gap:10px;min-width:0}.fv-dock .sg{display:flex;gap:4px;padding:3px;border-radius:13px;background:hsl(var(--muted)/.6)}.fv-dock .sg button{flex:1;border:0;border-radius:10px;min-height:36px;background:transparent;color:hsl(var(--muted-foreground));font:600 13.5px system-ui}.fv-dock .sg button[aria-pressed=true]{background:hsl(var(--card));color:hsl(var(--foreground));box-shadow:0 1px 3px rgba(0,0,0,.12)}" +
     ".fv-dock .am{font:500 38px var(--app-font-serif,Georgia,serif);text-align:center;letter-spacing:-.01em;min-height:48px;line-height:48px;color:hsl(var(--foreground));white-space:nowrap;overflow:hidden}.fv-dock .am.z{color:hsl(var(--muted-foreground)/.55)}.fv-dock .am.ok{color:hsl(var(--primary));font:600 20px system-ui}" +
     ".fv-dock .cs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px 0}.fv-dock .cs::-webkit-scrollbar{display:none}.fv-dock .cs button{flex:none;border:1px solid hsl(var(--border));background:hsl(var(--card));border-radius:999px;padding:0 13px;min-height:34px;font:500 13.5px system-ui;color:hsl(var(--foreground))}.fv-dock .cs button[aria-pressed=true]{background:hsl(var(--primary)/.14);border-color:hsl(var(--primary)/.45);color:hsl(var(--primary))}" +
+    ".fv-dock{grid-template-rows:minmax(0,1fr)}.fv-dock .rt{min-height:0}.fv-dock.one{grid-template-columns:minmax(0,1fr)}.fv-dock .mu{font-size:13px;color:hsl(var(--muted-foreground))}.fv-dock .hn{border:0;background:hsl(var(--muted)/.6);border-radius:12px;min-height:34px;font:500 13px system-ui;color:hsl(var(--muted-foreground))}" +
+    ".fv-dock .bl{display:flex;flex-direction:column;overflow-y:auto;min-height:0;margin:0 -2px;padding:0 2px}.fv-dock .br{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 4px;border-top:1px solid hsl(var(--border)/.55)}.fv-dock .br:first-child{border-top:0}.fv-dock .br b{display:block;font:500 15.5px system-ui}.fv-dock .br span{font-size:13px;color:hsl(var(--muted-foreground))}.fv-dock .br span.od{color:hsl(14 70% 45%)}.fv-dock .br button{flex:none;border:0;border-radius:999px;min-height:40px;padding:0 16px;background:hsl(var(--primary)/.14);color:hsl(var(--primary));font:600 14px system-ui}" +
+    ".fv-dock .em{display:flex;flex-direction:column;gap:2px;align-items:center;justify-content:center;text-align:center;padding:14px 0;flex:1}.fv-dock .em b{font:500 20px var(--app-font-serif,Georgia,serif)}.fv-dock .em span{font-size:13.5px;color:hsl(var(--muted-foreground))}" +
+    ".fv-dock .tg{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;flex:1;min-height:0}.fv-dock .tg.two{grid-template-columns:1fr 1fr;flex:none}.fv-dock .tg button{border:1px solid hsl(var(--border));background:hsl(var(--card));border-radius:18px;min-height:64px;font:600 15px system-ui;color:hsl(var(--foreground));transition:transform .12s}.fv-dock .tg button:active{transform:scale(.96)}.fv-dock .tg button[aria-pressed=true]{background:hsl(var(--primary)/.14);border-color:hsl(var(--primary)/.45);color:hsl(var(--primary))}" +
     ".fv-dock .go{margin-top:auto;border:0;border-radius:16px;min-height:48px;background:hsl(var(--primary));color:hsl(var(--primary-foreground));font:600 16px system-ui}.fv-dock .go:disabled{opacity:.45}" +
     /* book posture (side by side): keep content out of the hinge */
     "html.fv-book.fv-rail main,html.fv-book.fv-rail div.shrink-0.relative.z-10{padding-right:max(calc(var(--fv-r) + 68px),calc(100vw - var(--fv-book-r) + 12px))!important}";
@@ -3714,21 +3719,21 @@ var FavFIEngine = (function () {
   document.addEventListener("touchstart", function (e) {
     sw = null; if (e.touches.length !== 1 || !onRoute("/budget")) return;
     var t = e.target; if (!t.closest) return; var row = t.closest(".fv-row"); if (!row || t.closest("button,a,input,select,[role=menu]")) return;
-    var x = e.touches[0].clientX; if (x < 24) return;
+    var x = e.touches[0].clientX; if (x > innerWidth - 24) return;
     var card = row.parentElement; sw = { row: row, card: card, x: x, y: e.touches[0].clientY, dx: 0, lock: false, ov: null, st: stateOf(pillOf(row)) };
   }, { passive: true });
   document.addEventListener("touchmove", function (e) {
     if (!sw) return; var t = e.touches[0], dx = t.clientX - sw.x, dy = t.clientY - sw.y;
     if (!sw.lock) {
       if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { sw = null; return; }
-      if (dx > 14 && dx > Math.abs(dy) * 1.5) {
+      if (dx < -14 && -dx > Math.abs(dy) * 1.5) {
         sw.lock = true; var ov = document.createElement("div"); ov.className = "fv-swp";
-        ov.innerHTML = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='M5 12.5l4.5 4.5L19 7.5'/></svg><span>" + (sw.st === "paid" ? "Already paid" : "Mark paid") + "</span>";
+        ov.innerHTML = "<span>" + (sw.st === "paid" ? "Already paid" : "Mark paid") + "</span><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='M5 12.5l4.5 4.5L19 7.5'/></svg>";
         sw.card.insertBefore(ov, sw.card.firstChild); sw.ov = ov; sw.card.style.overflow = "hidden"; sw.row.style.transition = "none"; sw.fired = false;
       } else return;
     }
     if (e.cancelable) e.preventDefault();
-    sw.dx = Math.max(0, dx); var tx = sw.dx > 80 ? 80 + (sw.dx - 80) * .22 : sw.dx;
+    sw.dx = Math.max(0, -dx); var tx = -(sw.dx > 80 ? 80 + (sw.dx - 80) * .22 : sw.dx);
     sw.row.style.transform = "translateX(" + tx + "px)"; sw.ov.style.opacity = Math.min(1, sw.dx / 80);
     if (sw.dx >= 80 && !sw.fired) { sw.fired = true; if (sw.st !== "paid") fx("ok"); } else if (sw.dx < 80) sw.fired = false;
   }, { passive: false });
@@ -3789,28 +3794,75 @@ var FavFIEngine = (function () {
   addEventListener("hashchange", function () { svSig = ""; setTimeout(function () { strip(); checkin(); }, 200); });
 
 
-  /* ---------- laptop posture: a quick-add keypad in the lower half ---------- */
+  /* ---------- laptop posture: the lower half changes with the page ---------- */
   var DCATS = ["Food", "Housing", "Transport", "Subscriptions", "Utilities", "Health", "Personal", "Car", "Other"];
-  var dk = { mode: "ex", amt: "", cat: "Food", acct: null, flash: "" };
+  var dk = { mode: null, amt: "", cat: "Food", acct: null, goal: -1, card: null, flash: "", busy: false, sig: "", route: "" };
   function fmtAmt(a) { var p = a.split("."), i = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ","); return "$" + i + (p.length > 1 ? "." + p[1] : ""); }
-  function dockRender(box) {
-    var d = data() || {}, liquid = /sav|check|cash/i, accts = (d.assets || []).slice().sort(function (a, b) { return (liquid.test(b.type || "") ? 1 : 0) - (liquid.test(a.type || "") ? 1 : 0); }).slice(0, 6);
-    if (dk.acct == null || !accts.some(function (a) { return a.id === dk.acct; })) dk.acct = accts[0] ? accts[0].id : null;
-    var n = dk.amt ? Number(dk.amt) : 0, shown = dk.flash || (dk.amt ? fmtAmt(dk.amt) : "$0");
-    var keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "⌫"].map(function (k) { return "<button type='button' data-k='" + k + "' aria-label='" + (k === "⌫" ? "Delete" : k === "." ? "Decimal point" : k) + "'>" + k + "</button>"; }).join("");
-    var chips = dk.mode === "ex" ? DCATS.map(function (c) { return "<button type='button' data-c='" + c + "' aria-pressed='" + (c === dk.cat) + "'>" + c + "</button>"; }).join("") : (accts.length ? accts.map(function (a) { return "<button type='button' data-a='" + a.id + "' aria-pressed='" + (a.id === dk.acct) + "'>" + esc(a.name) + "</button>"; }).join("") : "<span style='font-size:13px;color:hsl(var(--muted-foreground))'>Add an account first</span>");
-    box.innerHTML = "<div class='kp'>" + keys + "</div><div class='rt'><div class='sg'><button type='button' data-m='ex' aria-pressed='" + (dk.mode === "ex") + "'>Expense</button><button type='button' data-m='sv' aria-pressed='" + (dk.mode === "sv") + "'>Savings</button></div><div class='am" + (dk.flash ? " ok" : dk.amt ? "" : " z") + "' aria-live='polite'>" + esc(shown) + "</div><div class='cs'>" + chips + "</div><button type='button' class='go'" + (n > 0 && !dk.busy ? "" : " disabled") + ">" + (dk.mode === "ex" ? "Add expense" : "Add savings") + "</button></div>";
+  function route() { var h = location.hash.replace(/^#/, ""); return h === "" || h === "/dashboard" ? "/" : h; }
+  function wtab() { var b = document.querySelector("#fv-wealth .fw-tabs button[aria-selected=true]"); return b ? b.textContent.trim() : (gm().wTab || "tax"); }
+  function dockModes(r) {
+    if (r === "/budget") return ["bills", "ex"];
+    if (r === "/payoff-plan") return ["pay"];
+    if (r === "/wealth") return /goal/i.test(wtab()) ? ["sv"] : ["tabs"];
+    if (r === "/setup") return ["setup"];
+    return ["ex", "sv"];
   }
+  var MODE_LABEL = { bills: "Bills", ex: "Add", sv: "Savings", pay: "Payment", tabs: "Sections", setup: "Settings" };
+  function dueDays(e) { if (e.dueDay == null) return 99; var n = new Date(), dim = new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate(); return Math.min(e.dueDay, dim) - n.getDate(); }
+  function dueLabel(e) { var d = dueDays(e); return e.dueDay == null ? "No due date" : d < 0 ? "Overdue" : d === 0 ? "Due today" : d === 1 ? "Due tomorrow" : "Due in " + d + " days"; }
+  function keypad() { return "<div class='kp'>" + ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "⌫"].map(function (k) { return "<button type='button' data-k='" + k + "' aria-label='" + (k === "⌫" ? "Delete" : k === "." ? "Decimal point" : k) + "'>" + k + "</button>"; }).join("") + "</div>"; }
+  function segHtml(modes) { return modes.length > 1 ? "<div class='sg'>" + modes.map(function (m) { return "<button type='button' data-m='" + m + "' aria-pressed='" + (m === dk.mode) + "'>" + MODE_LABEL[m] + "</button>"; }).join("") + "</div>" : ""; }
+  function chipRow(items, attr, cur) { return "<div class='cs'>" + items.map(function (c) { return "<button type='button' " + attr + "='" + esc(c[0]) + "' aria-pressed='" + (String(c[0]) === String(cur)) + "'>" + esc(c[1]) + "</button>"; }).join("") + "</div>"; }
+  function dockRender(box) {
+    var r = route(), modes = dockModes(r), d = data() || {}, liquid = /sav|check|cash/i;
+    if (modes.indexOf(dk.mode) < 0 || dk.route !== r) { dk.mode = modes[0]; if (dk.route !== r) { dk.amt = ""; dk.flash = ""; } dk.route = r; }
+    var accts = (d.assets || []).slice().sort(function (a, b) { return (liquid.test(b.type || "") ? 1 : 0) - (liquid.test(a.type || "") ? 1 : 0); }).slice(0, 6);
+    if (dk.acct == null || !accts.some(function (a) { return a.id === dk.acct; })) dk.acct = accts[0] ? accts[0].id : null;
+    var cards = (d.creditCards || []).filter(function (c) { return c.balance > 0; }); if (dk.card == null || !cards.some(function (c) { return c.id === dk.card; })) dk.card = cards[0] ? cards[0].id : null;
+    var n = dk.amt ? Number(dk.amt) : 0, shown = dk.flash || (dk.amt ? fmtAmt(dk.amt) : "$0"), seg = segHtml(modes), html = "";
+    box.classList.toggle("one", dk.mode === "bills" || dk.mode === "tabs" || dk.mode === "setup");
+    if (dk.mode === "bills") {
+      var ex = (d.expenses || []).filter(function (e) { return e.paymentStatus !== "paid"; }).sort(function (a, b) { return dueDays(a) - dueDays(b); });
+      html = "<div class='rt'>" + seg + (ex.length ? "<div class='bl'>" + ex.map(function (e) { return "<div class='br'><div><b>" + esc(e.name) + "</b><span class='" + (dueDays(e) < 0 ? "od" : "") + "'>" + dueLabel(e) + " · $" + Math.round(e.amount).toLocaleString() + "</span></div><button type='button' data-p='" + e.id + "'>Mark paid</button></div>"; }).join("") + "</div>" : "<div class='em'><b>All caught up</b><span>Every bill is paid this month.</span></div>") + "</div>";
+    } else if (dk.mode === "tabs") {
+      var tabs = ["Tax Lab", "Plan", "Goals", "Protect", "Give", "Calendar"], cur = wtab();
+      html = "<div class='rt'><div class='tg'>" + tabs.map(function (t) { return "<button type='button' data-w='" + t + "' aria-pressed='" + (t.toLowerCase().replace(" ", "") === cur.toLowerCase().replace(" ", "")) + "'>" + t + "</button>"; }).join("") + "</div></div>";
+    } else if (dk.mode === "setup") {
+      html = "<div class='rt'><div class='em'><b>Settings & safety</b><span>Quick links for this page.</span></div><div class='tg two'><button type='button' data-s='prefs'>Notifications & preferences</button><button type='button' data-s='backup'>Back up now</button></div></div>";
+    } else {
+      var chips = "", goals = []; try { goals = (window.FavFIData.getWealth() || {}).goals || []; } catch (e) {}
+      if (dk.mode === "ex") chips = chipRow(DCATS.map(function (c) { return [c, c]; }), "data-c", dk.cat);
+      else if (dk.mode === "pay") chips = cards.length ? chipRow(cards.map(function (c) { return [c.id, c.name]; }), "data-d", dk.card) : "<span class='mu'>No debts to pay down</span>";
+      else chips = (accts.length ? chipRow(accts.map(function (a) { return [a.id, a.name]; }), "data-a", dk.acct) : "<span class='mu'>Add an account first</span>") + (r === "/wealth" && goals.length ? chipRow([[-1, "No goal"]].concat(goals.map(function (g, i) { return [i, g.name]; })), "data-g", dk.goal) : "");
+      var hint = ""; if (dk.mode === "pay") { var cd = cards.filter(function (c) { return c.id === dk.card; })[0]; if (cd) hint = "<button type='button' class='hn' data-h='" + cd.minimumPayment + "'>Minimum $" + Math.round(cd.minimumPayment) + " · balance $" + Math.round(cd.balance).toLocaleString() + "</button>"; }
+      html = keypad() + "<div class='rt'>" + seg + "<div class='am" + (dk.flash ? " ok" : dk.amt ? "" : " z") + "' aria-live='polite'>" + esc(shown) + "</div>" + chips + hint + "<button type='button' class='go'" + (n > 0 && !dk.busy ? "" : " disabled") + ">" + (dk.mode === "ex" ? "Add expense" : dk.mode === "pay" ? "Log payment" : "Add savings") + "</button></div>";
+    }
+    box.innerHTML = html;
+  }
+  function dockDone(box, msg, anchor) {
+    dk.amt = ""; dk.busy = false; dk.flash = msg; fx("ok");
+    try { var r = (box.querySelector(".am") || anchor || box).getBoundingClientRect(); window.FavFIFx && window.FavFIFx.sparkle(r.left + r.width / 2, r.top + r.height / 2); } catch (e) {}
+    dockRender(box); setTimeout(function () { dk.flash = ""; if (box.isConnected) dockRender(box); }, 1300);
+  }
+  function api(method, url, body) { return fetch(url, { method: method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined }).then(function (r) { if (!r.ok) throw new Error(url); return r.status === 204 ? null : r.json(); }); }
+  function inval() { try { window.__qc && window.__qc.invalidateQueries(); } catch (e) {} }
   function dockSubmit(box) {
     var n = Number(dk.amt); if (!(n > 0) || dk.busy) return; dk.busy = true; dockRender(box);
-    var p = dk.mode === "ex" ? fetch("/api/expenses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: dk.cat, amount: n, category: dk.cat, isFixed: false }) }).then(function (r) { if (!r.ok) throw new Error("x"); try { window.__qc && window.__qc.invalidateQueries(); } catch (e) {} }) : (window.FavFISavings ? window.FavFISavings.quick(n, dk.acct) : Promise.reject());
-    p.then(function () { dk.amt = ""; dk.busy = false; dk.flash = dk.mode === "ex" ? "Added to " + dk.cat : "Saved"; fx("ok"); try { var r = box.querySelector(".am").getBoundingClientRect(); window.FavFIFx && window.FavFIFx.sparkle(r.left + r.width / 2, r.top + r.height / 2); } catch (e) {} dockRender(box); setTimeout(function () { dk.flash = ""; if (box.isConnected) dockRender(box); }, 1300); }).catch(function () { dk.busy = false; dk.flash = ""; dockRender(box); });
+    var fail = function () { dk.busy = false; dk.flash = ""; dockRender(box); };
+    if (dk.mode === "ex") api("POST", "/api/expenses", { name: dk.cat, amount: n, category: dk.cat, isFixed: false }).then(function () { inval(); dockDone(box, "Added to " + dk.cat); }).catch(fail);
+    else if (dk.mode === "sv") (window.FavFISavings ? window.FavFISavings.quick(n, dk.acct, dk.goal) : Promise.reject()).then(function () { dockDone(box, "Saved"); }).catch(fail);
+    else if (dk.mode === "pay") {
+      var c = ((data() || {}).creditCards || []).filter(function (x) { return x.id === dk.card; })[0]; if (!c) return fail();
+      var after = Math.max(0, Math.round((c.balance - n) * 100) / 100);
+      api("PATCH", "/api/credit-cards/" + c.id, { balance: after }).then(function () { return api("POST", "/api/payment-logs", { creditCardId: c.id, creditCardName: c.name, amountPaid: n, suggestedAmount: c.minimumPayment || n, balanceBefore: c.balance, balanceAfter: after }); }).then(function () { inval(); dockDone(box, "Paid " + (n >= 1 ? "$" + Math.round(n).toLocaleString() : fmtAmt(String(n))) + " to " + c.name); }).catch(fail);
+    }
   }
+  function dockSig() { var r = route(), d = data(), ex = d ? (d.expenses || []).map(function (e) { return e.id + e.paymentStatus; }).join() : ""; return [r, r === "/wealth" ? wtab() : "", dk.mode === "bills" ? ex : "", d ? (d.creditCards || []).length + "/" + (d.assets || []).length : ""].join("|"); }
   function dock() {
     var box = document.getElementById("fv-dock"), on = root.classList.contains("fv-lap") && !document.getElementById("favfi-lock");
     if (!on) { if (box) box.remove(); return; }
     if (box) return;
-    box = document.createElement("div"); box.id = "fv-dock"; box.className = "fv-dock"; box.setAttribute("role", "group"); box.setAttribute("aria-label", "Quick add");
+    box = document.createElement("div"); box.id = "fv-dock"; box.className = "fv-dock"; box.setAttribute("role", "group"); box.setAttribute("aria-label", "Quick actions");
     box.addEventListener("click", function (e) {
       var b = e.target.closest("button"); if (!b || b.disabled) return;
       if (b.hasAttribute("data-k")) { var k = b.getAttribute("data-k"); fx("ok"); dk.flash = "";
@@ -3818,11 +3870,23 @@ var FavFIEngine = (function () {
       else if (b.hasAttribute("data-m")) { dk.mode = b.getAttribute("data-m"); dk.flash = ""; }
       else if (b.hasAttribute("data-c")) dk.cat = b.getAttribute("data-c");
       else if (b.hasAttribute("data-a")) dk.acct = +b.getAttribute("data-a");
+      else if (b.hasAttribute("data-g")) dk.goal = +b.getAttribute("data-g");
+      else if (b.hasAttribute("data-d")) dk.card = +b.getAttribute("data-d");
+      else if (b.hasAttribute("data-h")) dk.amt = String(b.getAttribute("data-h"));
+      else if (b.hasAttribute("data-p")) {
+        var id = +b.getAttribute("data-p"); b.disabled = true; var row = b.closest(".br");
+        api("PATCH", "/api/expenses/" + id, { paymentStatus: "paid" }).then(function () { inval(); fx("ok"); try { var rc = b.getBoundingClientRect(); window.FavFIFx && window.FavFIFx.sparkle(rc.left + rc.width / 2, rc.top + rc.height / 2); } catch (x) {} if (row) { row.style.transition = "opacity .25s,transform .25s"; row.style.opacity = 0; row.style.transform = "translateX(-24px)"; } setTimeout(function () { dk.sig = ""; dockRender(box); }, 280); }).catch(function () { b.disabled = false; });
+        return;
+      }
+      else if (b.hasAttribute("data-w")) { var t = b.getAttribute("data-w"), pb = [].filter.call(document.querySelectorAll("#fv-wealth .fw-tabs button"), function (x) { return x.textContent.trim() === t; })[0]; if (pb) pb.click(); setTimeout(function () { dk.sig = ""; }, 120); return; }
+      else if (b.hasAttribute("data-s")) { var tg = b.getAttribute("data-s") === "prefs" ? document.querySelector(".fv-bell") : document.getElementById("favfi-backup-fab"); if (tg) tg.click(); return; }
       else if (b.classList.contains("go")) { dockSubmit(box); return; }
       dockRender(box);
     });
     document.body.appendChild(box); dockRender(box);
   }
+  setInterval(function () { var box = document.getElementById("fv-dock"); if (!box) return; var s = dockSig(); if (s !== dk.sig) { dk.sig = s; if (!dk.busy && !dk.flash) dockRender(box); } }, 600);
+
   /* ---------- fold / posture ---------- */
   function mq(q) { try { return matchMedia(q).matches; } catch (e) { return false; } }
   var pt = 0;
