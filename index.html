@@ -1013,7 +1013,33 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     try { localStorage.setItem(META_KEY, JSON.stringify(m)); } catch (e) {}
     return m;
   }
-  function markBackup() { setMeta({ lastBackup: new Date().toISOString(), snoozeUntil: null, changes: 0 }); hideBanner(); }
+  /* ---------- prompt governor: every nudge asks permission here, so prompts stay rare, relevant and never repeat after you've acted ---------- */
+  var FavFIPrompts = (function () {
+    var DAY = 864e5;
+    function all() { return getMeta().pr || {}; }
+    function put(k, v) { var m = getMeta(), pr = m.pr || {}, o = pr[k] || {}; for (var x in v) { if (v[x] === null) delete o[x]; else o[x] = v[x]; } pr[k] = o; setMeta({ pr: pr }); }
+    function t(i) { return i ? new Date(i).getTime() : 0; }
+    function iso(ms) { return new Date(ms).toISOString(); }
+    return {
+      state: function (k) { return all()[k] || {}; },
+      age: function () { var f = getMeta().firstSeen; return f ? (Date.now() - t(f)) / DAY : 0; },
+      ok: function (k, o) {
+        o = o || {}; var s = all()[k] || {}, now = Date.now(), cool = (o.cool || 7) * DAY;
+        if (s.mute && now < t(s.mute)) return false;
+        if (s.u && now < t(s.u)) return false;
+        if (s.a && now - t(s.a) < Math.max(cool * 3, 30 * DAY)) return false;
+        if (s.s && now - t(s.s) < cool) return false;
+        if (o.interrupt !== false) { var la = getMeta().lastAny; if (la && now - t(la) < (o.gapMin || 15) * 60000) return false; }
+        return true;
+      },
+      shown: function (k, o) { put(k, { s: iso(Date.now()) }); if (!(o && o.interrupt === false)) setMeta({ lastAny: iso(Date.now()) }); },
+      dismissed: function (k, days) { var s = all()[k] || {}, n = (s.d || 0) + 1, w = (days || 7) * Math.pow(2, n - 1) * DAY; put(k, { d: n, u: iso(Date.now() + w), mute: n >= 4 ? iso(Date.now() + 90 * DAY) : null }); },
+      ignored: function (k) { var s = all()[k] || {}, n = (s.ig || 0) + 1; put(k, { ig: n, mute: n >= 3 ? iso(Date.now() + 45 * DAY) : null }); },
+      acted: function (k) { put(k, { a: iso(Date.now()), d: 0, ig: 0, u: null, mute: null }); }
+    };
+  })();
+  window.FavFIPrompts = FavFIPrompts;
+  function markBackup() { setMeta({ lastBackup: new Date().toISOString(), snoozeUntil: null, changes: 0 }); FavFIPrompts.acted("backup"); hideBanner(); }
   addEventListener("favfi:changed", function () { setMeta({ changes: (getMeta().changes || 0) + 1 }); });
 
   /* Save the backup file (share sheet on iPad/iPhone, download elsewhere). Resolves with a status message. */
@@ -1074,6 +1100,9 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
       var m = getMeta(), now = new Date();
       if (!m.lastBackup && !m.firstSeen) { setMeta({ firstSeen: now.toISOString() }); return false; }
       if (m.snoozeUntil && new Date(m.snoozeUntil) > now) return false;
+      if (FavFIPrompts.age() < 3) return false;
+      if (m.lastBackup && (now - new Date(m.lastBackup)) / 864e5 < 5) return false;
+      if (!FavFIPrompts.ok("backup", { cool: 2, gapMin: 10 })) return false;
       if ((m.changes || 0) >= 10) return true;
       var base = m.lastBackup || m.firstSeen;
       var days = (now - new Date(base)) / 864e5;
@@ -1094,9 +1123,9 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     var go = el("button", "flex:1;font:600 14px/1 'DM Sans',system-ui,sans-serif;padding:11px 14px;border-radius:12px;border:0;background:#3f8a63;color:#fff;cursor:pointer;", "Save backup");
     var later = el("button", "font:600 14px/1 'DM Sans',system-ui,sans-serif;padding:11px 14px;border-radius:12px;border:1px solid " + (d ? "rgba(255,255,255,.18)" : "rgba(0,0,0,.12)") + ";background:transparent;color:inherit;cursor:pointer;", "Later");
     go.onclick = function () { exportBackup().then(function (r) { if (r.result === "cancelled") return; if (r.result === "failed") return; hideBanner(); }); };
-    later.onclick = function () { setMeta({ snoozeUntil: new Date(Date.now() + 2 * 864e5).toISOString() }); hideBanner(); };
+    later.onclick = function () { FavFIPrompts.dismissed("backup", 3); hideBanner(); };
     row.appendChild(go); row.appendChild(later); bannerEl.appendChild(row);
-    document.body.appendChild(bannerEl);
+    document.body.appendChild(bannerEl); FavFIPrompts.shown("backup");
   }
 
   /* ---------- app lock (PIN) ---------- */
@@ -2147,14 +2176,15 @@ var FavFIEngine = (function () {
 
   /* ---------- tiny helpers ---------- */
   function monthsLeftIn(date) { var n = new Date(); return Math.max(0, (date.getFullYear() - n.getFullYear()) * 12 + date.getMonth() - n.getMonth()); }
-  function toast(msg, yes, onYes, key) {
+  function toast(msg, yes, onYes, key, onNo) {
     var old = document.querySelector(".fw-toast"); if (old) old.remove();
     var t = el("div", "fw-toast"); t.setAttribute("role", "status");
     t.innerHTML = "<p>" + msg + "</p>" + (yes ? "<button class='y'>" + yes + "</button><button class='n'>" + (yes === "Undo" ? "Dismiss" : "Later") + "</button>" : "<button class='n'>OK</button>");
     document.body.appendChild(t); requestAnimationFrame(function () { requestAnimationFrame(function () { t.classList.add("in"); }); });
     function close() { t.classList.remove("in"); setTimeout(function () { t.remove(); }, 500); }
     var y = t.querySelector(".y"); if (y) y.onclick = function () { close(); if (onYes) onYes(); };
-    t.querySelector(".n").onclick = close; setTimeout(close, yes ? 12000 : 5000);
+    var done = false; t.querySelector(".n").onclick = function () { done = true; close(); if (onNo) onNo(false); }; if (y) { var oy = y.onclick; y.onclick = function () { done = true; oy(); }; }
+    setTimeout(function () { if (done) return; done = true; close(); if (onNo) onNo(true); }, yes ? 12000 : 5000);
   }
   function fx(name) { var f = window.FavFIFx; if (!f) return; try { if (name === "good") { f.haptic(); f.chime("tap"); } else if (name === "big") { f.confetti(); f.chime("big"); } } catch (e) {} }
   function nowSpark(node) { var f = window.FavFIFx; if (!f || !node) return; var r = node.getBoundingClientRect(); try { f.sparkle(r.left + r.width / 2, r.top + r.height / 2); } catch (e) {} }
@@ -2544,15 +2574,23 @@ var FavFIEngine = (function () {
   /* ---------- smart nudges: one gentle suggestion, only when you open Wealth ---------- */
   function nudgeOnce() {
     if (!host || document.querySelector(".fv-sheet,.fw-rev")) return;
+    var PR = window.FavFIPrompts; if (!PR || PR.age() < 2) return;
     var m = gm(), today = new Date().toISOString().slice(0, 10); if (m.wNudge === today) return;
-    var p = pForEngine(), L = p.salary ? E.levers(p) : { list: [] }, d = data() || {}, ru = runway(d), pick = null, now = new Date(), yeDays = Math.ceil((new Date(now.getFullYear(), 11, 31) - now) / 864e5);
-    var match = L.list.filter(function (x) { return x.match; })[0];
-    if (match) pick = ["Your 401(k) match is about " + fmt(match.saves) + " a year you're not collecting. Want to look?", "Show me", "tax"];
-    else if (W.lifeDeps && !num(W.lifeCover)) pick = ["Someone relies on your income and there's no life insurance listed. Take a look?", "Show me", "protect"];
-    else if (ru && ru.months < 3) pick = ["Your emergency fund covers " + ru.months.toFixed(1) + " months. A goal ring can help you build it.", "Set a goal", "goals"];
-    else if (yeDays <= 75 && L.list[0]) pick = ["About " + yeDays + " days left in the year. Maxing your 401(k) could still cut about " + fmt(L.list[0].saves) + " of tax.", "Show me", "tax"];
-    if (!pick) return; sm({ wNudge: today });
-    toast(pick[0], pick[1], function () { tab = pick[2]; sm({ wTab: tab }); render(); }, "n");
+    var p = pForEngine(), L = p.salary ? E.levers(p) : { list: [] }, d = data() || {}, ru = runway(d), now = new Date(), yeDays = Math.ceil((new Date(now.getFullYear(), 11, 31) - now) / 864e5);
+    var goals = W.goals || [], efund = goals.filter(function (g) { return g.kind === "efund"; })[0], DAY = 864e5;
+    var recentGoal = goals.some(function (g) { return g.id > 1e12 && now - g.id < 30 * DAY; });
+    var recentSave = savLog().some(function (e) { return !e.undone && now - new Date(e.ts) < 21 * DAY; });
+    var match = L.list.filter(function (x) { return x.match; })[0], c = [];
+    if (match) c.push({ k: "match", cool: 14, msg: "Your 401(k) match is about " + fmt(match.saves) + " a year you're not collecting. Want to look?", yes: "Show me", go: function () { tab = "tax"; sm({ wTab: tab }); render(); } });
+    if (W.lifeDeps && !num(W.lifeCover)) c.push({ k: "life", cool: 30, msg: "Someone relies on your income and there's no life insurance listed. Take a look?", yes: "Show me", go: function () { tab = "protect"; sm({ wTab: tab }); render(); } });
+    if (ru && ru.months < 3) {
+      if (!efund && !recentGoal) c.push({ k: "efund-goal", cool: 30, msg: "Your emergency fund covers " + ru.months.toFixed(1) + " months. A goal ring can help you build it.", yes: "Set a goal", go: function () { tab = "goals"; sm({ wTab: tab }); render(); } });
+      else if (!recentSave) { var need = Math.max(0, ru.monthly * 3 - ru.liquid); c.push({ k: "efund-add", cool: 14, msg: "Your cushion is " + ru.months.toFixed(1) + " months. About " + fmt(need) + " more gets you to 3.", yes: "Add savings", go: function () { savingsSheet({ goal: efund ? goals.indexOf(efund) : -1 }); } }); }
+    }
+    if (yeDays <= 75 && L.list[0] && L.list[0].saves >= 150) c.push({ k: "yearend", cool: 21, msg: "About " + yeDays + " days left in the year. Maxing your 401(k) could still cut about " + fmt(L.list[0].saves) + " of tax.", yes: "Show me", go: function () { tab = "tax"; sm({ wTab: tab }); render(); } });
+    var pick = c.filter(function (x) { return PR.ok("w:" + x.k, { cool: x.cool }); })[0]; if (!pick) return;
+    sm({ wNudge: today }); PR.shown("w:" + pick.k);
+    toast(pick.msg, pick.yes, function () { PR.acted("w:" + pick.k); pick.go(); }, "n", function (ignored) { if (ignored) PR.ignored("w:" + pick.k); else PR.dismissed("w:" + pick.k, pick.cool / 2); });
   }
   AFTER.push(function (still) { if (!still && !nudgeOnce._t) { nudgeOnce._t = setTimeout(function () { nudgeOnce._t = 0; if (onWealth()) nudgeOnce(); }, 2200); } });
 
@@ -2677,6 +2715,8 @@ var FavFIEngine = (function () {
     if (!onDash()) return;
     var st = stats(); var m = gm(); if (m.recapCard === false || !st || m.recap === st.month) return;
     if (document.querySelector(".fv-sheet")) return;
+    var PR = window.FavFIPrompts; if (PR && (PR.age() < 3 || !PR.ok("recap", { cool: 20, gapMin: 10 }))) return;
+    if (PR) PR.shown("recap");
     sm({ recap: st.month });
     var up = st.paidMonth > 0;
     var s = sheet("<h3>Your " + new Date().toLocaleString(undefined, { month: "long" }) + " recap</h3><p>" + (up ? "Nice work — you brought your debt down " + $(st.paidMonth) + " since last month." : "Your debt held steady this month. Small steps still count.") + "</p><div class='fv-stat'><div>Total debt<b>" + $(st.cur) + "</b></div><div>Paid off overall<b>" + Math.round(st.pct) + "%</b></div></div><div class='row'><span></span><button class='fv-btn'>Continue</button></div>");
@@ -3675,6 +3715,7 @@ var FavFIEngine = (function () {
   var css = document.createElement("style"); css.id = "fv-x10";
   css.textContent =
     ".fv-swp{position:absolute;inset:0;border-radius:inherit;z-index:5;display:flex;align-items:center;justify-content:flex-end;padding-right:22px;gap:10px;background:hsl(150 45% 42%/.16);color:hsl(150 45% 28%);font:600 15px system-ui;opacity:0;pointer-events:none}html.dark .fv-swp{color:hsl(150 50% 70%);background:hsl(150 45% 40%/.22)}.fv-swp svg{width:22px;height:22px}" +
+    ".fv-pulse{animation:fvPulse 1.5s ease}@keyframes fvPulse{0%{box-shadow:0 0 0 0 hsl(var(--primary)/.5)}35%{box-shadow:0 0 0 9px hsl(var(--primary)/.2)}100%{box-shadow:0 0 0 0 hsl(var(--primary)/0)}}" +
     ".fv-sv .fv-bar{height:10px;border-radius:6px;background:hsl(var(--muted));overflow:hidden;margin:12px 0 8px}.fv-sv .fv-bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,hsl(var(--primary)/.75),hsl(var(--primary)));transition:width .8s cubic-bezier(.2,.8,.2,1)}.fv-sv p{margin:0;font-size:13.5px;color:hsl(var(--muted-foreground))}.fv-sv .fv-svh{display:flex;gap:10px;margin-top:12px}.fv-sv .fv-svh button{flex:1}" +
     "html.fv-cover .fv-ci .fv-glh,html.fv-cover .fv-sv .fv-glh{flex-wrap:wrap;row-gap:2px}.fv-ci .fv-glh h3,.fv-sv .fv-glh h3{white-space:nowrap}" +
     ".fv-ci .fv-cis{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}.fv-ci .fv-cis button{border:1px solid hsl(var(--border));background:hsl(var(--card));border-radius:999px;padding:0 16px;min-height:44px;font:600 14px system-ui;color:hsl(var(--foreground))}.fv-ci .fv-cis button[data-d='1']{background:hsl(var(--primary)/.14);border-color:hsl(var(--primary)/.4);color:hsl(var(--primary))}.fv-ci .fv-cid{border:0;background:none;color:hsl(var(--muted-foreground));font:500 13.5px system-ui;min-height:44px;padding:0 4px}" +
@@ -3762,7 +3803,8 @@ var FavFIEngine = (function () {
     if (host.previousElementSibling !== prev) prev.insertAdjacentElement("afterend", host);
     if (sig === svSig && host.firstChild) return;
     svSig = sig; var pct = goal ? Math.min(1, saved / goal) : 0;
-    var copy = goal ? (saved >= goal ? "You hit this month's savings goal. Nice work." : saved > 0 ? $(goal - saved) + " to go this month. Even a little counts." : "Nothing set aside yet this month. Even $25 counts.") : (saved > 0 ? "Every dollar you set aside also feeds your goals." : "Add what you set aside and it feeds your goals and net worth.");
+    var nn = new Date(), dim = new Date(nn.getFullYear(), nn.getMonth() + 1, 0).getDate(), left = dim - nn.getDate() + 1, pace = goal * nn.getDate() / dim;
+    var copy = goal ? (saved >= goal ? "You hit this month's savings goal. Nice work." : saved >= pace * 0.9 && saved > 0 ? "On pace. " + $(goal - saved) + " to go this month." : saved === 0 && nn.getDate() <= 7 ? "The month is young. A first deposit sets the tone." : saved > 0 ? $(goal - saved) + " to go. About " + $(Math.ceil((goal - saved) / Math.max(1, left) * 7)) + " a week gets you there." : "Nothing set aside yet this month. Even $25 counts.") : (saved > 0 ? "Every dollar you set aside also feeds your goals." : "Add what you set aside and it feeds your goals and net worth.");
     host.innerHTML = "<div class='fv-gl'><div class='fv-glh'><h3>Saving this month</h3><span>" + (goal ? $(saved) + " of " + $(goal) : saved > 0 ? $(saved) : "") + "</span></div>" +
       (goal ? "<div class='fv-bar'><i style='width:0'></i></div>" : "") + "<p>" + copy + "</p><div class='fv-svh'><button type='button' class='fv-btn' id='fv-sv-add'>+ Add savings</button></div></div>";
     var bar = host.querySelector(".fv-bar i"); if (bar) requestAnimationFrame(function () { requestAnimationFrame(function () { bar.style.width = Math.round(pct * 100) + "%"; }); });
@@ -3773,7 +3815,12 @@ var FavFIEngine = (function () {
   /* ---------- monthly check-in (first week of the month) ---------- */
   function ym() { var n = new Date(); return n.getFullYear() + "-" + (n.getMonth() + 1); }
   function checkin() {
-    var host = document.getElementById("fv-ci"), m = gm(), show = onDash() && m.checkin !== false && m.ciMonth !== ym() && new Date().getDate() <= 7;
+    var host = document.getElementById("fv-ci"), m = gm(), PR = window.FavFIPrompts, show = onDash() && m.checkin !== false && m.ciMonth !== ym() && new Date().getDate() <= 7 && (!PR || PR.age() >= 3);
+    if (show) {
+      var dd = data(), ex = dd ? (dd.expenses || []) : [], savedDone = window.FavFISavings && window.FavFISavings.stats().month > 0, billsDone = ex.length > 0 && ex.every(function (e) { return e.paymentStatus === "paid"; });
+      if (savedDone && billsDone) { sm({ ciMonth: ym() }); show = false; }
+      else if (host) { var sb = host.querySelector("[data-k=sv]"); if (sb && savedDone) sb.setAttribute("data-d", "1"); var bb = host.querySelector("[data-k=bills]"); if (bb && billsDone) bb.setAttribute("data-d", "1"); }
+    }
     if (!show) { if (host) host.remove(); return; }
     var g = document.getElementById("fv-glance"); if (!g) return;
     if (host && host.nextElementSibling === g) return;
@@ -3789,10 +3836,19 @@ var FavFIEngine = (function () {
       });
     }
     g.insertAdjacentElement("beforebegin", host);
+    if (PR && !host._shown) { host._shown = 1; PR.shown("checkin", { interrupt: false }); }
   }
   setInterval(function () { strip(); checkin(); }, 900);
   addEventListener("hashchange", function () { svSig = ""; setTimeout(function () { strip(); checkin(); }, 200); });
 
+
+  function pulse(el) { if (!el) return; try { el.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (e) {} el.classList.remove("fv-pulse"); void el.offsetWidth; el.classList.add("fv-pulse"); setTimeout(function () { el.classList.remove("fv-pulse"); }, 1700); }
+  function findCard(text) {
+    var main = document.querySelector("main"); if (!main || !text) return null;
+    var els = [].filter.call(main.querySelectorAll("h3,p,span,b,div"), function (e) { return e.children.length === 0 && e.textContent.trim() === text; }), el = els[els.length - 1];
+    return el ? (el.closest(".bg-card.rounded-3xl,.fw-card,.fv-gl") || el) : null;
+  }
+  function mirror(fn) { setTimeout(function () { try { pulse(fn()); } catch (e) {} }, 650); }
 
   /* ---------- laptop posture: the lower half changes with the page ---------- */
   var DCATS = ["Food", "Housing", "Transport", "Subscriptions", "Utilities", "Health", "Personal", "Car", "Other"];
@@ -3849,12 +3905,12 @@ var FavFIEngine = (function () {
   function dockSubmit(box) {
     var n = Number(dk.amt); if (!(n > 0) || dk.busy) return; dk.busy = true; dockRender(box);
     var fail = function () { dk.busy = false; dk.flash = ""; dockRender(box); };
-    if (dk.mode === "ex") api("POST", "/api/expenses", { name: dk.cat, amount: n, category: dk.cat, isFixed: false }).then(function () { inval(); dockDone(box, "Added to " + dk.cat); }).catch(fail);
-    else if (dk.mode === "sv") (window.FavFISavings ? window.FavFISavings.quick(n, dk.acct, dk.goal) : Promise.reject()).then(function () { dockDone(box, "Saved"); }).catch(fail);
+    if (dk.mode === "ex") api("POST", "/api/expenses", { name: dk.cat, amount: n, category: dk.cat, isFixed: false }).then(function () { inval(); dockDone(box, "Added to " + dk.cat); var nm = dk.cat; mirror(function () { return route() === "/budget" ? findCard(nm) : document.getElementById("fv-glance"); }); }).catch(fail);
+    else if (dk.mode === "sv") (window.FavFISavings ? window.FavFISavings.quick(n, dk.acct, dk.goal) : Promise.reject()).then(function () { dockDone(box, "Saved"); var gn = (dk.goal >= 0 && ((window.FavFIData.getWealth() || {}).goals || [])[dk.goal] || {}).name; mirror(function () { return route() === "/wealth" ? (findCard(gn) || document.querySelector("#fv-wealth .fw-card")) : document.getElementById("fv-sv"); }); }).catch(fail);
     else if (dk.mode === "pay") {
       var c = ((data() || {}).creditCards || []).filter(function (x) { return x.id === dk.card; })[0]; if (!c) return fail();
       var after = Math.max(0, Math.round((c.balance - n) * 100) / 100);
-      api("PATCH", "/api/credit-cards/" + c.id, { balance: after }).then(function () { return api("POST", "/api/payment-logs", { creditCardId: c.id, creditCardName: c.name, amountPaid: n, suggestedAmount: c.minimumPayment || n, balanceBefore: c.balance, balanceAfter: after }); }).then(function () { inval(); dockDone(box, "Paid " + (n >= 1 ? "$" + Math.round(n).toLocaleString() : fmtAmt(String(n))) + " to " + c.name); }).catch(fail);
+      api("PATCH", "/api/credit-cards/" + c.id, { balance: after }).then(function () { return api("POST", "/api/payment-logs", { creditCardId: c.id, creditCardName: c.name, amountPaid: n, suggestedAmount: c.minimumPayment || n, balanceBefore: c.balance, balanceAfter: after }); }).then(function () { inval(); dockDone(box, "Paid " + (n >= 1 ? "$" + Math.round(n).toLocaleString() : fmtAmt(String(n))) + " to " + c.name); mirror(function () { return findCard(c.name); }); }).catch(fail);
     }
   }
   function dockSig() { var r = route(), d = data(), ex = d ? (d.expenses || []).map(function (e) { return e.id + e.paymentStatus; }).join() : ""; return [r, r === "/wealth" ? wtab() : "", dk.mode === "bills" ? ex : "", d ? (d.creditCards || []).length + "/" + (d.assets || []).length : ""].join("|"); }
@@ -3875,7 +3931,7 @@ var FavFIEngine = (function () {
       else if (b.hasAttribute("data-h")) dk.amt = String(b.getAttribute("data-h"));
       else if (b.hasAttribute("data-p")) {
         var id = +b.getAttribute("data-p"); b.disabled = true; var row = b.closest(".br");
-        api("PATCH", "/api/expenses/" + id, { paymentStatus: "paid" }).then(function () { inval(); fx("ok"); try { var rc = b.getBoundingClientRect(); window.FavFIFx && window.FavFIFx.sparkle(rc.left + rc.width / 2, rc.top + rc.height / 2); } catch (x) {} if (row) { row.style.transition = "opacity .25s,transform .25s"; row.style.opacity = 0; row.style.transform = "translateX(-24px)"; } setTimeout(function () { dk.sig = ""; dockRender(box); }, 280); }).catch(function () { b.disabled = false; });
+        api("PATCH", "/api/expenses/" + id, { paymentStatus: "paid" }).then(function () { inval(); fx("ok"); try { var rc = b.getBoundingClientRect(); window.FavFIFx && window.FavFIFx.sparkle(rc.left + rc.width / 2, rc.top + rc.height / 2); } catch (x) {} if (row) { row.style.transition = "opacity .25s,transform .25s"; row.style.opacity = 0; row.style.transform = "translateX(-24px)"; } setTimeout(function () { dk.sig = ""; dockRender(box); }, 280); var bn = row && row.querySelector("b") && row.querySelector("b").textContent; mirror(function () { return findCard(bn); }); }).catch(function () { b.disabled = false; });
         return;
       }
       else if (b.hasAttribute("data-w")) { var t = b.getAttribute("data-w"), pb = [].filter.call(document.querySelectorAll("#fv-wealth .fw-tabs button"), function (x) { return x.textContent.trim() === t; })[0]; if (pb) pb.click(); setTimeout(function () { dk.sig = ""; }, 120); return; }
