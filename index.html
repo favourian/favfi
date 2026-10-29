@@ -1035,7 +1035,8 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
       shown: function (k, o) { put(k, { s: iso(Date.now()) }); if (!(o && o.interrupt === false)) setMeta({ lastAny: iso(Date.now()) }); },
       dismissed: function (k, days) { var s = all()[k] || {}, n = (s.d || 0) + 1, w = (days || 7) * Math.pow(2, n - 1) * DAY; put(k, { d: n, u: iso(Date.now() + w), mute: n >= 4 ? iso(Date.now() + 90 * DAY) : null }); },
       ignored: function (k) { var s = all()[k] || {}, n = (s.ig || 0) + 1; put(k, { ig: n, mute: n >= 3 ? iso(Date.now() + 45 * DAY) : null }); },
-      acted: function (k) { put(k, { a: iso(Date.now()), d: 0, ig: 0, u: null, mute: null }); }
+      acted: function (k) { put(k, { a: iso(Date.now()), d: 0, ig: 0, u: null, mute: null }); },
+      reset: function (k) { var pr = getMeta().pr || {}; if (k) delete pr[k]; else pr = {}; setMeta({ pr: pr }); }
     };
   })();
   window.FavFIPrompts = FavFIPrompts;
@@ -1073,6 +1074,8 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     });
   }
 
+  window.FavFIBackup = { run: function () { return exportBackup(); } };
+
   /* ---------- CSV export (opens in Numbers, Excel, Google Sheets) ---------- */
   function csvCell(v) { v = v == null ? "" : String(v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
   function csvOf(headers, rows) { return [headers.map(csvCell).join(",")].concat(rows.map(function (r) { return r.map(csvCell).join(","); })).join("\r\n") + "\r\n"; }
@@ -1106,6 +1109,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
       if ((m.changes || 0) >= 10) return true;
       var base = m.lastBackup || m.firstSeen;
       var days = (now - new Date(base)) / 864e5;
+      if (m.lastBackup && days >= 7 && (m.changes || 0) >= 3) return true;
       return days > 30 || monthOf(base) < now.toISOString().slice(0, 7) && days >= 1;
     } catch (e) { return false; }
   }
@@ -1120,7 +1124,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${t.do
     bannerEl.appendChild(el("div", "font:700 15px/1.3 'Plus Jakarta Sans','DM Sans',system-ui,sans-serif;margin-bottom:3px;", "Time to save a backup"));
     bannerEl.appendChild(el("div", "font-size:13px;line-height:1.45;color:" + (d ? "#aaa297" : "#6f685e") + ";margin-bottom:12px;", since + " Your numbers live only on this device, so a fresh copy protects them."));
     var row = el("div", "display:flex;gap:10px;");
-    var go = el("button", "flex:1;font:600 14px/1 'DM Sans',system-ui,sans-serif;padding:11px 14px;border-radius:12px;border:0;background:#3f8a63;color:#fff;cursor:pointer;", "Save backup");
+    var go = el("button", "flex:1;font:600 14px/1 'DM Sans',system-ui,sans-serif;padding:11px 14px;border-radius:12px;border:0;background:#3f8a63;color:#fff;cursor:pointer;", "Save to Files");
     var later = el("button", "font:600 14px/1 'DM Sans',system-ui,sans-serif;padding:11px 14px;border-radius:12px;border:1px solid " + (d ? "rgba(255,255,255,.18)" : "rgba(0,0,0,.12)") + ";background:transparent;color:inherit;cursor:pointer;", "Later");
     go.onclick = function () { exportBackup().then(function (r) { if (r.result === "cancelled") return; if (r.result === "failed") return; hideBanner(); }); };
     later.onclick = function () { FavFIPrompts.dismissed("backup", 3); hideBanner(); };
@@ -3979,6 +3983,69 @@ var FavFIEngine = (function () {
   ["(device-posture: folded)", "(horizontal-viewport-segments: 2)", "(vertical-viewport-segments: 2)"].forEach(function (q) { try { matchMedia(q).addEventListener("change", sp); } catch (e) {} });
   addEventListener("resize", function () { if (!window.__fvSynth) sp(); }); posture();
   new MutationObserver(function () { var n = document.getElementById("fv-scr"); if (n && !n.querySelector(".fv-post")) sp(); }).observe(document.body, { childList: true, subtree: true });
+})();
+
+/* FavFI: Settings > Preferences gets a Backup status section and a "What I've learned" section; asks Safari to keep our data. */
+(function () {
+  "use strict";
+  var META = "favfi:meta:v1";
+  function gm() { try { return JSON.parse(localStorage.getItem(META) || "{}") || {}; } catch (e) { return {}; } }
+  function esc(t) { return String(t).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
+  /* ask the browser not to evict our storage when space is tight (best effort; Safari decides) */
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().then(function (ok) { window.__fvPersist = !!ok; }, function () {}); } catch (e) {}
+
+  var NAMES = { backup: "Backup reminder", recap: "Monthly recap", "w:match": "Employer match tip", "w:life": "Life insurance tip", "w:efund-goal": "Emergency fund goal tip", "w:efund-add": "Emergency fund top-up tip", "w:yearend": "Year-end tax tip" };
+  function nice(k) { if (NAMES[k]) return NAMES[k]; var b = k.replace(/^w:/, "").replace(/[-_]/g, " "); return b.charAt(0).toUpperCase() + b.slice(1) + " tip"; }
+  function day(i) { return new Date(i).toLocaleDateString(undefined, { month: "short", day: "numeric" }); }
+  function ago(iso) { var d = Math.floor((Date.now() - new Date(iso)) / 864e5); return d <= 0 ? "today" : d === 1 ? "yesterday" : d + " days ago"; }
+
+  function section(title, build) {
+    var sec = document.createElement("div"); sec.className = "fv-ps";
+    var hd = document.createElement("button"); hd.type = "button"; hd.className = "fv-ph"; hd.setAttribute("aria-expanded", "false");
+    hd.innerHTML = "<span>" + title + "</span><em></em><svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>";
+    var body = document.createElement("div"); body.className = "fv-pb"; var inner = document.createElement("div"); inner.className = "fv-pi"; body.appendChild(inner);
+    sec.appendChild(hd); sec.appendChild(body);
+    function fill() { inner.innerHTML = ""; var em = build(inner); hd.querySelector("em").textContent = em || ""; }
+    hd.onclick = function () { var o = sec.classList.toggle("fv-open"); hd.setAttribute("aria-expanded", o ? "true" : "false"); if (o) fill(); try { window.FavFIFx && FavFIFx.haptic(); } catch (e) {} };
+    fill(); return sec;
+  }
+  function row(host, name, sub) { var r = document.createElement("div"); r.className = "fv-pr"; r.innerHTML = "<div class='fv-pt'><b>" + esc(name) + "</b><span>" + esc(sub) + "</span></div>"; host.appendChild(r); return r; }
+  function btn(label, fn) { var b = document.createElement("button"); b.type = "button"; b.className = "fv-mini"; b.textContent = label; b.onclick = fn; return b; }
+
+  function backupBuild(inner) {
+    var m = gm(), last = m.lastBackup, d = last ? Math.floor((Date.now() - new Date(last)) / 864e5) : null;
+    var tone = last == null ? "none yet" : d < 7 ? "up to date" : d < 30 ? "due soon" : "overdue";
+    var r = row(inner, last ? "Last backup " + ago(last) : "No backup saved yet", (m.changes || 0) + " change" + ((m.changes || 0) === 1 ? "" : "s") + " since then. Saves to Files, iCloud Drive or anywhere you choose; the same file name is reused so Files offers to Replace.");
+    r.appendChild(btn("Back up now", function () { if (!window.FavFIBackup) return; this.disabled = true; var self = this; FavFIBackup.run().then(function () { self.disabled = false; backupRefresh(); }, function () { self.disabled = false; }); }));
+    var st = window.__fvPersist; row(inner, "Storage protection", st === true ? "Safari has agreed to keep this app's data. A backup is still your safety net." : "Safari may clear this app's data if the device runs very low on space or the app goes unused for weeks. Back up regularly.");
+    return tone;
+  }
+  function backupRefresh() { var e = document.querySelector("#fv-prefs-x .fv-bk"); if (!e) return; var inner = e.querySelector(".fv-pi"); inner.innerHTML = ""; e.querySelector("em").textContent = backupBuild(inner); }
+
+  function learnBuild(inner) {
+    var pr = gm().pr || {}, now = Date.now(), keys = Object.keys(pr).filter(function (k) { var s = pr[k]; return (s.u && new Date(s.u) > now) || (s.mute && new Date(s.mute) > now); });
+    if (!keys.length) { row(inner, "Nothing is snoozed or muted", "Tips and reminders show up when they're useful. If you dismiss one, it waits longer each time and it will appear here."); return ""; }
+    keys.forEach(function (k) {
+      var s = pr[k], muted = s.mute && new Date(s.mute) > now, until = muted ? s.mute : s.u;
+      var r = row(inner, nice(k), (muted ? "Muted until " : "Snoozed until ") + day(until) + (s.d ? " · dismissed " + s.d + "×" : ""));
+      r.appendChild(btn("Show again", function () { if (window.FavFIPrompts) FavFIPrompts.reset(k); refreshLearn(); }));
+    });
+    var all = row(inner, "Reset everything", "Clears all snoozes and mutes so tips can appear again."); all.appendChild(btn("Reset all", function () { if (window.FavFIPrompts) FavFIPrompts.reset(); refreshLearn(); }));
+    return keys.length + " paused";
+  }
+  function refreshLearn() { var e = document.querySelector("#fv-prefs-x .fv-ln"); if (!e) return; var inner = e.querySelector(".fv-pi"); inner.innerHTML = ""; e.querySelector("em").textContent = learnBuild(inner); }
+
+  function mount() {
+    var host = document.getElementById("fv-prefs"); if (!host || document.getElementById("fv-prefs-x")) return;
+    var w = document.createElement("div"); w.id = "fv-prefs-x";
+    var a = section("Backup status", backupBuild); a.classList.add("fv-bk");
+    var b = section("What I've learned", learnBuild); b.classList.add("fv-ln");
+    w.appendChild(a); w.appendChild(b); host.appendChild(w);
+  }
+  var css = document.createElement("style");
+  css.textContent = ".fv-mini{flex:none;border:1px solid hsl(var(--border));background:hsl(var(--card));color:hsl(var(--foreground));font:500 13px system-ui;padding:8px 14px;border-radius:99px;min-height:36px;cursor:pointer;margin-left:auto}.fv-mini:active{transform:scale(.96)}.fv-mini:disabled{opacity:.5}#fv-prefs-x .fv-pr{flex-wrap:wrap;gap:10px}";
+  document.head.appendChild(css);
+  setInterval(mount, 600);
 })();
 </script>
 <script>(function(){try{if("serviceWorker"in navigator&&/^https?:$/.test(location.protocol)){addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{scope:"./"}).catch(function(){})})}}catch(e){}})();</script>
