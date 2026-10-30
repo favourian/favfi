@@ -2979,7 +2979,7 @@ var FavFIEngine = (function () {
     var g = document.getElementById("fv-glance"); if (!g) return;
     var d = dataNow(); if (!d) return;
     var rows = (d.nwSnapshots || []).slice().sort(function (a, b) { return a.month < b.month ? -1 : 1; }).slice(-12);
-    if (!rows.length) { if (host) host.remove(); return; }
+    if (rows.length < 2) { if (host) host.remove(); return; } /* one dot says nothing the Net worth card above doesn't */
     var sig = JSON.stringify(rows.map(function (r) { return r.month + ":" + Math.round(r.value); }));
     if (host && host.getAttribute("data-sig") === sig && host.previousElementSibling === g) return;
     if (!host) { host = el("div"); host.id = "fv-nw"; }
@@ -3800,6 +3800,7 @@ var FavFIEngine = (function () {
   function strip() {
     var host = document.getElementById("fv-sv");
     if (!onDash()) { if (host) host.remove(); svSig = ""; return; }
+    if (document.getElementById("fv-pulse")) { if (host) host.remove(); svSig = ""; return; } /* "Month at a glance" already shows savings progress */
     var g = document.getElementById("fv-glance"); if (!g) return;
     var d = data(); if (!d) return;
     var st = window.FavFISavings ? window.FavFISavings.stats() : { month: 0 };
@@ -4077,14 +4078,15 @@ var FavFIEngine = (function () {
     });
     over.sort(function (a, b) { return a.days - b.days; });
     var unpaid = ex.filter(function (x) { return x.paymentStatus !== "paid"; }).length;
+    var billsPaid = ex.length - unpaid, billsLeft = ex.reduce(function (a, x) { return a + (x.paymentStatus === "paid" ? 0 : x.paymentStatus === "half_paid" ? x.amount / 2 : x.amount); }, 0);
     var behind = goal ? Math.max(0, goal * frac - saved) : 0;
     var v;
     if (over.length) v = { tone: "warn", t: over.length === 1 ? esc(over[0].x.name) + " is " + Math.abs(over[0].days) + (Math.abs(over[0].days) === 1 ? " day" : " days") + " overdue. Start there." : over.length + " bills are overdue. Start with " + esc(over[0].x.name) + "." };
     else if (goal && day >= 10 && saved < goal * frac * 0.6 && saved < goal) v = { tone: "soft", t: "Savings are a little behind pace. About " + $(Math.min(behind, goal - saved)) + " would catch you up." };
     else if (next && next.days <= 3) v = { tone: "soft", t: esc(next.x.name) + (next.days === 0 ? " is due today." : next.days === 1 ? " is due tomorrow." : " is due in " + next.days + " days.") };
     else if (ex.length && !unpaid) v = { tone: "good", t: "Every bill is paid" + (goal && saved >= goal ? " and your savings goal is met. A great month." : ". Nicely done.") };
-    else v = { tone: "good", t: "You're on track this month." + (goal && saved >= goal ? " Savings goal met." : "") };
-    return { v: v, goal: goal, saved: saved, paidDebt: paidDebt, nPay: nPay, next: next, hasCards: cards.length > 0, hasEx: ex.length > 0 };
+    else v = { tone: "good", t: "You're on track this month." };
+    return { v: v, goal: goal, saved: saved, paidDebt: paidDebt, nPay: nPay, next: next, hasCards: cards.length > 0, hasEx: ex.length > 0, nBills: ex.length, billsPaid: billsPaid, billsLeft: billsLeft };
   }
 
   function render() {
@@ -4092,7 +4094,7 @@ var FavFIEngine = (function () {
     if (!onDash() || gm().pulse === false) { if (host) host.remove(); sig = ""; return; }
     var g = document.getElementById("fv-glance"); if (!g) return;
     var d = data(); if (!d || (!(d.expenses || []).length && !(d.creditCards || []).length)) return;
-    var c = compute(d), key = JSON.stringify([c.v.t, c.saved, c.goal, c.paidDebt, c.next && c.next.x.id, c.next && c.next.days]);
+    var c = compute(d), key = JSON.stringify([c.v.t, c.saved, c.goal, c.paidDebt, c.next && c.next.x.id, c.next && c.next.days, c.billsPaid, c.nBills, Math.round(c.billsLeft)]);
     var target = document.getElementById("fv-ci") || g;
     if (host && key === sig) { if (host.nextElementSibling !== target) target.insertAdjacentElement("beforebegin", host); return; }
     sig = key;
@@ -4101,14 +4103,16 @@ var FavFIEngine = (function () {
     host.innerHTML = "<div class='fv-gl fv-pl'><div class='fv-glh'><h3>Month at a glance</h3></div>" +
       "<p class='fv-pv fv-" + c.v.tone + "'><i></i><span>" + c.v.t + "</span></p>" +
       "<div class='fv-stat'>" +
-      "<div>Saved<b>" + (c.goal ? $(c.saved) + "<small> / " + $(c.goal) + "</small>" : $(c.saved)) + "</b></div>" +
+      (c.hasEx ? "<div>Bills paid<b>" + c.billsPaid + "<small> of " + c.nBills + "</small></b><span class='fv-sub'>" + $(c.billsLeft) + " left to pay</span></div>" : "") +
+      "<div>Saved<b>" + (c.goal ? $(c.saved) + "<small> / " + $(c.goal) + "</small>" : $(c.saved)) + "</b>" + (c.goal ? "<span class='fv-mb'><u style='width:" + Math.round(Math.min(1, c.saved / c.goal) * 100) + "%'></u></span>" : "") + "</div>" +
       (c.hasCards ? "<div>Paid to debt<b>" + (c.nPay ? $(c.paidDebt) : "$0") + "</b></div>" : "") +
-      (c.next ? "<div>Next bill<b>" + esc(c.next.x.name.length > 11 ? c.next.x.name.slice(0, 10) + "…" : c.next.x.name) + "<small> " + nb + "</small></b></div>" : "") +
-      "</div></div>";
+      (c.next && c.next.days > 7 ? "<div>Next bill<b>" + esc(c.next.x.name.length > 11 ? c.next.x.name.slice(0, 10) + "…" : c.next.x.name) + "<small> " + nb + "</small></b></div>" : "") +
+      "</div><div class='fv-pf'><button type='button' class='fv-btn' id='fv-pl-add'>+ Add savings</button></div></div>";
+    host.querySelector("#fv-pl-add").onclick = function () { window.FavFISavings && FavFISavings.open({}); };
     if (host.nextElementSibling !== target) target.insertAdjacentElement("beforebegin", host);
   }
   var css = document.createElement("style");
-  css.textContent = "#fv-pulse{margin:0 0 20px}.fv-pl{padding:20px 24px}.fv-pv{display:flex;align-items:flex-start;gap:10px;margin:0 0 14px;font:500 16px/1.4 var(--app-font-serif)}.fv-pv i{flex:none;width:9px;height:9px;border-radius:50%;margin-top:7px;background:hsl(152 30% 40%);box-shadow:0 0 0 4px hsl(152 30% 40%/.16)}.fv-pv.fv-soft i{background:hsl(38 80% 52%);box-shadow:0 0 0 4px hsl(38 80% 52%/.18)}.fv-pv.fv-warn i{background:hsl(8 70% 54%);box-shadow:0 0 0 4px hsl(8 70% 54%/.18)}.fv-pl .fv-stat{margin:0}.fv-pl .fv-stat b small{font:400 12px system-ui;color:hsl(var(--muted-foreground))}html.fv-cover .fv-pl{padding:18px}html.fv-cover .fv-pl .fv-stat{flex-wrap:wrap}html.fv-cover .fv-pl .fv-stat div{flex:1 1 40%}";
+  css.textContent = "#fv-pulse{margin:0 0 20px}.fv-pl{padding:20px 24px}.fv-pv{display:flex;align-items:flex-start;gap:10px;margin:0 0 14px;font:500 16px/1.4 var(--app-font-serif)}.fv-pv i{flex:none;width:9px;height:9px;border-radius:50%;margin-top:7px;background:hsl(152 30% 40%);box-shadow:0 0 0 4px hsl(152 30% 40%/.16)}.fv-pv.fv-soft i{background:hsl(38 80% 52%);box-shadow:0 0 0 4px hsl(38 80% 52%/.18)}.fv-pv.fv-warn i{background:hsl(8 70% 54%);box-shadow:0 0 0 4px hsl(8 70% 54%/.18)}.fv-pl .fv-stat{margin:0}.fv-pl .fv-stat b small{font:400 12px system-ui;color:hsl(var(--muted-foreground))}html.fv-cover .fv-pl{padding:18px}.fv-mb{display:block;height:5px;border-radius:9px;background:hsl(var(--foreground)/.1);margin-top:8px;overflow:hidden}.fv-mb u{display:block;height:100%;border-radius:9px;background:hsl(152 30% 40%);transition:width .6s cubic-bezier(.2,.8,.2,1)}.fv-sub{display:block;font-size:11.5px;margin-top:4px;color:hsl(var(--muted-foreground))}#fv-pulse~#fv-glance .fv-stat{display:none}.fv-pf{margin-top:12px}.fv-pf .fv-btn{width:100%}html.fv-cover .fv-pl .fv-stat{flex-wrap:wrap}html.fv-cover .fv-pl .fv-stat div{flex:1 1 40%}";
   document.head.appendChild(css);
   setInterval(render, 1000);
   ["favfi:savings", "favfi:changed", "hashchange"].forEach(function (e) { addEventListener(e, function () { sig = ""; setTimeout(render, 250); }); });
@@ -4165,8 +4169,20 @@ var FavFIEngine = (function () {
     ".fv-si{flex:none;width:40px;height:40px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:hsl(var(--primary)/.12);color:hsl(var(--primary))}.fv-si svg{width:21px;height:21px}" +
     ".fv-stx b{display:block;font:500 15px system-ui}.fv-stx em{display:block;font:400 12.5px/1.35 system-ui;font-style:normal;color:hsl(var(--muted-foreground));margin-top:2px}" +
     ".fv-sr.fv-d{cursor:default;opacity:.62}.fv-sr.fv-d .fv-si{background:hsl(152 30% 40%);color:#fff}.fv-sr.fv-d b{text-decoration:line-through;text-decoration-color:hsl(var(--muted-foreground)/.5)}";
+  css.textContent += ".fv-dupe{display:none!important}";
   document.head.appendChild(css);
-  setInterval(render, 1000);
+  /* the header chip repeats "Bills paid" from the This month card right below it */
+  function dupes() {
+    var has = !!document.getElementById("fv-glance");
+    /* payoff page repeats the dashboard's spending breakdown, which is not about debt */
+    if (/payoff-plan/.test(location.hash)) [].forEach.call(document.querySelectorAll("main h2,main h3"), function (h) {
+      if (/^\s*Monthly Spending Breakdown\s*$/.test(h.textContent)) { var c = h.closest("[class*='rounded-'][class*='border'],[class*='rounded-3xl']"); if (c && c.tagName !== "MAIN") c.classList.add("fv-dupe"); }
+    });
+    [].forEach.call(document.querySelectorAll("main .rounded-full.border"), function (c) {
+      if (/^\s*\d+ of \d+\s*bills paid this month\s*$/.test(c.textContent)) c.classList.toggle("fv-dupe", has);
+    });
+  }
+  setInterval(function () { render(); dupes(); }, 1000);
   ["favfi:changed", "favfi:savings", "hashchange"].forEach(function (e) { addEventListener(e, function () { setTimeout(render, 300); }); });
 })();
 </script>
