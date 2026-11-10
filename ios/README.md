@@ -20,7 +20,7 @@ Everything runs offline from files inside the app. Open `FavFI.swiftpm` in Swift
 ## What works where (honest status)
 - The Swift code was written without a compiler available. Expect to fix a few small compile errors on first Run. Paste them to Claude and they get fixed quickly.
 - On-device model: needs a device with Apple Intelligence on, iOS 26 or later.
-- Apple cloud model: needs iOS 27 and likely Apple's approval of your app (apply on the Apple developer site; limits apply per iCloud account). Until then the sheet shows a friendly error.
+- Apple cloud model: Playgrounds' SDK does not include it yet (error "Cannot find PrivateCloudComputeLanguageModel"), so it is off by default and the sheet says so. In Xcode with the iOS 27 SDK, add `.define("FAVFI_PCC")` to swiftSettings; it likely also needs Apple's approval of your app (apply on the Apple developer site).
 - Siri AI (apps as tools): needs a development-signed Xcode build on an Apple Intelligence device; App Store users get it in spring; unavailable in the EU. Playgrounds may not generate App Intents metadata, so the Siri file is switched off by default. To try: add `swiftSettings: [.define("FAVFI_SIRI")]` to the target in Package.swift.
 - Face ID: in App Settings, Capabilities, add Face ID with the text "FavFI uses Face ID to keep your finances private."
 - The icon is upscaled from a 512 px image. Replace `Assets.xcassets/AppIcon.appiconset/AppIcon.png` with a true 1024 px icon before submitting.
