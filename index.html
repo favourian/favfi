@@ -3768,7 +3768,7 @@ var FavFIEngine = (function () {
   document.addEventListener("touchstart", function (e) {
     sw = null; if (e.touches.length !== 1 || !onRoute("/budget")) return;
     var t = e.target; if (!t.closest) return; var row = t.closest(".fv-row"); if (!row || t.closest("button,a,input,select,[role=menu]")) return;
-    var x = e.touches[0].clientX; if (x > innerWidth - 24) return;
+    var x = e.touches[0].clientX; if (x > innerWidth - 24 || x < 24) return; /* leave both screen edges to iOS (back swipe, Reachability) */
     var card = row.parentElement; sw = { row: row, card: card, x: x, y: e.touches[0].clientY, dx: 0, lock: false, ov: null, st: stateOf(pillOf(row)) };
   }, { passive: true });
   document.addEventListener("touchmove", function (e) {
