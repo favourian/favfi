@@ -4185,6 +4185,37 @@ var FavFIEngine = (function () {
   setInterval(function () { render(); dupes(); }, 1000);
   ["favfi:changed", "favfi:savings", "hashchange"].forEach(function (e) { addEventListener(e, function () { setTimeout(render, 300); }); });
 })();
+
+/* "Marked paid. Undo": after one bill flips to paid, offer a quick way back. */
+(function () {
+  "use strict";
+  if (!window.FavFIData || window.__fvUndoPaid) return; window.__fvUndoPaid = 1;
+  function rows() { try { return JSON.parse(window.FavFIData.exportJson()).data.expenses || []; } catch (e) { return null; } }
+  function snap() { var r = rows(); if (!r) return null; var m = {}; r.forEach(function (x) { m[x.id] = x.paymentStatus; }); return { m: m, list: r }; }
+  var prev = snap(), t, undoing = false, tt;
+  function toast(msg, fn) {
+    var old = document.querySelector(".fv-toast"); if (old) old.remove();
+    var d = document.createElement("div"); d.className = "fv-toast"; d.setAttribute("role", "status");
+    var s = document.createElement("span"); s.textContent = msg; d.appendChild(s);
+    var b = document.createElement("button"); b.type = "button"; b.textContent = "Undo"; b.onclick = function () { d.remove(); fn(); }; d.appendChild(b);
+    document.body.appendChild(d); clearTimeout(tt); tt = setTimeout(function () { d.remove(); }, 6000);
+  }
+  function check() {
+    var cur = snap(); if (!cur) return;
+    var before = prev; prev = cur; if (!before || undoing) return;
+    var flipped = cur.list.filter(function (x) { return x.paymentStatus === "paid" && before.m[x.id] && before.m[x.id] !== "paid"; });
+    if (flipped.length !== 1) return;
+    if (cur.list.length && cur.list.every(function (x) { return x.paymentStatus === "paid"; })) return; /* the "every bill paid" celebration wins */
+    var x = flipped[0], was = before.m[x.id];
+    toast("Marked " + String(x.name || "bill").slice(0, 24) + " paid", function () {
+      undoing = true;
+      fetch("/api/expenses/" + x.id, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paymentStatus: was }) })
+        .then(function () { try { window.__qc && window.__qc.invalidateQueries(); } catch (e) {} }, function () {})
+        .then(function () { setTimeout(function () { prev = snap(); undoing = false; }, 400); });
+    });
+  }
+  addEventListener("favfi:changed", function () { clearTimeout(t); t = setTimeout(check, 200); });
+})();
 </script>
 <script>(function(){try{if("serviceWorker"in navigator&&/^https?:$/.test(location.protocol)){addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{scope:"./"}).catch(function(){})})}}catch(e){}})();</script>
 </body>
